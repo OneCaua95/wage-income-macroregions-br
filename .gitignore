@@ -1,0 +1,35 @@
+# Ignorar qualquer pasta ou arquivo com 'data' ou 'dados' no nome (case insensitive)
+*[dD]ata*/
+*[dD]ados*/
+
+# Ignorar arquivos CSV, Parquet e similares (formatos de dados comuns)
+*.csv
+*.parquet
+*.txt
+*.xls
+*.xlsx
+*.sas
+*.gz
+
+# Ignorar pasta dicionario-pnad
+dicionario-pnad/
+
+# Ignorar notebook específico
+analisis.ipynb
+
+# Ignorar caches e temporários do Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Ignorar checkpoints e configurações de editor
+.ipynb_checkpoints/
+.vscode/
+*.swp
+*.swo
+*.bak
+.DS_Store
+

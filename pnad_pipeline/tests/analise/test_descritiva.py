@@ -45,6 +45,23 @@ def test_preparar_variaveis_analise(df_amostra_pnad: pd.DataFrame):
     assert "Escolaridade_Nivel" in df_prep.columns
 
 
+def test_preparar_variaveis_filtra_idade_inclusive(df_amostra_pnad: pd.DataFrame):
+    """A preparação mantém os limites 25 e 65 e remove as demais idades."""
+    df = pd.concat(
+        [
+            df_amostra_pnad,
+            df_amostra_pnad.iloc[[0]].assign(Idade=24),
+            df_amostra_pnad.iloc[[0]].assign(Idade=66),
+        ],
+        ignore_index=True,
+    )
+
+    df_prep = preparar_variaveis_analise(df)
+
+    assert len(df_prep) == len(df_amostra_pnad)
+    assert df_prep["Idade"].between(25, 65).all()
+
+
 def test_calcular_series_trimestrais_salario_hora(df_amostra_pnad: pd.DataFrame):
     """Valida o cálculo das agregações por período e grupos."""
     df_prep = preparar_variaveis_analise(df_amostra_pnad)

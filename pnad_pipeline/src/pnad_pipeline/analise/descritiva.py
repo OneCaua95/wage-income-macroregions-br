@@ -19,6 +19,25 @@ FONTE_DESCRITIVA: Final[str] = (
     "Valores deflacionados pelo IPCA (Data-base: Jan/2026)."
 )
 
+IDADE_MINIMA_ANALISE: Final[int] = 25
+IDADE_MAXIMA_ANALISE: Final[int] = 65
+
+# Correspondência entre os nomes padronizados do pipeline e os códigos do
+# dicionário da PNAD Contínua usados nas análises do notebook.
+VARIAVEIS_DICIONARIO_ANALISE: Final[dict[str, str]] = {
+    "Idade": "V2009",
+    "Sexo": "V2007",
+    "Cor": "V2010",
+    "Anos_de_Estudo": "VD3005",
+    "Condicao_Ocupacao": "VD4002",
+    "Categoria_emprego": "VD4009",
+    "Grupo_atv_princ_empreedimento": "VD4010",
+    "Contribuicao_previdencia": "VD4012",
+    "Rendimento_hab_Trab_princ": "VD4016",
+    "Horas_hab_trabalhadas": "VD4031",
+    "UF": "UF",
+}
+
 ATIVIDADES_MAP: Final[dict[int, str]] = {
     1: "Agricultura e Pecuária",
     2: "Indústria Geral",
@@ -33,7 +52,11 @@ ATIVIDADES_MAP: Final[dict[int, str]] = {
 }
 
 
-def preparar_variaveis_analise(df: pd.DataFrame) -> pd.DataFrame:
+def preparar_variaveis_analise(
+    df: pd.DataFrame,
+    min_idade: int = IDADE_MINIMA_ANALISE,
+    max_idade: int = IDADE_MAXIMA_ANALISE,
+) -> pd.DataFrame:
     """Cria variáveis derivadas e descritivas padronizadas para análise estatística.
 
     Parameters
@@ -46,18 +69,54 @@ def preparar_variaveis_analise(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         DataFrame com colunas adicionais para análises econômicas e demográficas.
     """
+    if min_idade > max_idade:
+        raise ValueError("min_idade deve ser menor ou igual a max_idade.")
+
+    required = {"Ano", "Trimestre", "Idade"}
+    missing = sorted(required.difference(df.columns))
+    if missing:
+        raise KeyError(f"Colunas obrigatórias ausentes para a análise: {missing}")
+
     df_out = df.copy()
+    df_out["Idade"] = pd.to_numeric(df_out["Idade"], errors="coerce")
+    mask_idade = df_out["Idade"].between(min_idade, max_idade, inclusive="both")
+    removidas = int((~mask_idade).sum())
+    if removidas:
+        logger.info(
+            "Filtro analítico de idade [%d-%d]: %s → %s observações.",
+            min_idade,
+            max_idade,
+            f"{len(df_out):,}",
+            f"{int(mask_idade.sum()):,}",
+        )
+    df_out = df_out.loc[mask_idade].copy()
 
     # Período formatado (ex: '2013.1')
     df_out["Periodo"] = df_out["Ano"].astype(str) + "." + df_out["Trimestre"].astype(str)
 
     # Salário-Hora (R$/h)
-    mask_horas = (df_out["Horas_hab_trabalhadas"] > 0) & (df_out["Horas_hab_trabalhadas"].notna())
-    mask_renda = df_out["Rendimento_hab_Trab_princ"].notna()
+    mask_horas = (
+        df_out["Horas_hab_trabalhadas"].notna()
+        & (df_out["Horas_hab_trabalhadas"] > 0)
+    )
+    mask_renda = (
+        df_out["Rendimento_hab_Trab_princ"].notna()
+        & (df_out["Rendimento_hab_Trab_princ"] > 0)
+    )
+
+    if "Condicao_Ocupacao" in df_out.columns:
+        df_out["Ocupado"] = pd.to_numeric(
+            df_out["Condicao_Ocupacao"], errors="coerce"
+        ).eq(1)
+    else:
+        # Compatibilidade com DataFrames analíticos mínimos e bases já filtradas.
+        df_out["Ocupado"] = mask_horas & mask_renda
+
     df_out["Salario_Hora"] = np.nan
-    df_out.loc[mask_horas & mask_renda, "Salario_Hora"] = (
-        df_out.loc[mask_horas & mask_renda, "Rendimento_hab_Trab_princ"]
-        / (df_out.loc[mask_horas & mask_renda, "Horas_hab_trabalhadas"] * 4.33)
+    mask_salario = mask_horas & mask_renda & df_out["Ocupado"]
+    df_out.loc[mask_salario, "Salario_Hora"] = (
+        df_out.loc[mask_salario, "Rendimento_hab_Trab_princ"]
+        / (df_out.loc[mask_salario, "Horas_hab_trabalhadas"] * 4.33)
     )
 
     # Sexo
@@ -69,9 +128,9 @@ def preparar_variaveis_analise(df: pd.DataFrame) -> pd.DataFrame:
 
     # Setor: Público vs Privado
     if "Categoria_emprego" in df_out.columns:
-        df_out["Setor"] = np.where(
-            df_out["Categoria_emprego"].isin([5, 6, 7]), "Público", "Privado"
-        )
+        setor_publico = df_out["Categoria_emprego"].isin([5, 6, 7])
+        df_out["Setor"] = np.where(setor_publico, "Público", "Privado").astype(object)
+        df_out.loc[~df_out["Ocupado"], "Setor"] = pd.NA
 
     # Formalidade no Trabalho
     if "Categoria_emprego" in df_out.columns and "Contribuicao_previdencia" in df_out.columns:
@@ -79,7 +138,8 @@ def preparar_variaveis_analise(df: pd.DataFrame) -> pd.DataFrame:
             df_out["Categoria_emprego"].isin([1, 3, 5, 7])
             | (df_out["Categoria_emprego"].isin([8, 9]) & (df_out["Contribuicao_previdencia"] == 1))
         )
-        df_out["Formalidade"] = np.where(formal_mask, "Formal", "Informal")
+        df_out["Formalidade"] = np.where(formal_mask, "Formal", "Informal").astype(object)
+        df_out.loc[~df_out["Ocupado"], "Formalidade"] = pd.NA
 
     # Faixa Etária
     if "Idade" in df_out.columns:
@@ -104,7 +164,9 @@ def preparar_variaveis_analise(df: pd.DataFrame) -> pd.DataFrame:
 
     # Atividade Econômica
     if "Grupo_atv_princ_empreedimento" in df_out.columns:
-        df_out["Atividade_Desc"] = df_out["Grupo_atv_princ_empreedimento"].map(ATIVIDADES_MAP).fillna("Outras")
+        df_out["Atividade_Desc"] = df_out["Grupo_atv_princ_empreedimento"].map(ATIVIDADES_MAP)
+        df_out.loc[~df_out["Ocupado"], "Atividade_Desc"] = np.nan
+        df_out["Atividade_Desc"] = df_out["Atividade_Desc"].fillna("Sem informação")
 
     return df_out
 

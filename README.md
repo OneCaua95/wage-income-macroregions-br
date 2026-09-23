@@ -18,8 +18,10 @@ Projeto para extração, transformação e análise dos microdados da PNAD Cont�
 │   │   └── processed/      # saídas geradas localmente
 │   ├── scripts/
 │   └── tests/
-├── frontend/               # futura interface de visualização
+├── frontend/               # dashboard HTML e futura interface de visualização
 └── scripts/                # utilitários auxiliares
 ```
 
 Os notebooks Jupyter são mantidos apenas como arquivos locais de trabalho e estão ignorados pelo Git. Consulte o [README do pipeline](pnad_pipeline/README.md) para instalação, execução e testes.
+
+O dashboard atual está em [frontend/dashboard_salario_hora.html](frontend/dashboard_salario_hora.html) e apresenta as métricas dos modelos, incluindo o M5 reproduzido do notebook `analise`.

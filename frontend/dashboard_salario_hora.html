@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Comparação de modelos para estimar o salário-hora na PNAD Contínua." />
+  <title>PNAD / Benchmark do salário-hora</title>
+  <style>
+    :root {
+      --ink: #18212f;
+      --ink-soft: #566273;
+      --ink-faint: #7c8795;
+      --paper: #f4f6f8;
+      --surface: #ffffff;
+      --surface-alt: #eef2f6;
+      --line: #dce2e9;
+      --line-strong: #c7d0db;
+      --navy: #172337;
+      --blue: #2f6df6;
+      --blue-dark: #1d4fbe;
+      --blue-soft: #e8f0ff;
+      --green: #13795b;
+      --amber: #9a6500;
+      --red: #ae3d3d;
+      --radius: 10px;
+      --shadow: 0 10px 30px rgba(26, 42, 64, .07);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); color: var(--ink); }
+    body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.5; }
+    button { font: inherit; }
+    .shell { min-height: 100vh; }
+
+    .topbar {
+      background: var(--navy);
+      color: #f4f7fb;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .topbar-inner, .page { width: min(1280px, calc(100% - 48px)); margin: 0 auto; }
+    .topbar-inner { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 600; letter-spacing: -.01em; }
+    .brand-mark { width: 27px; height: 27px; border: 1px solid #8eb4ff; display: grid; place-items: center; color: #8eb4ff; font-family: var(--mono); font-size: 12px; }
+    .crumb { color: #a9b8cb; font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+    .topbar-meta { display: flex; align-items: center; gap: 16px; color: #b9c5d4; font-size: 12px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #45c48c; box-shadow: 0 0 0 4px rgba(69,196,140,.13); }
+
+    main { padding: 46px 0 64px; }
+    .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; margin-bottom: 30px; }
+    .eyebrow { margin: 0 0 12px; color: var(--blue-dark); font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 760px; margin-bottom: 12px; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; letter-spacing: -.045em; text-wrap: balance; }
+    .lede { max-width: 680px; margin-bottom: 0; color: var(--ink-soft); font-size: 17px; text-wrap: pretty; }
+    .run-badge { flex: 0 0 auto; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-soft); background: rgba(255,255,255,.62); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+
+    .kpi-grid { display: grid; grid-template-columns: 1.35fr repeat(3, 1fr); gap: 12px; margin-bottom: 30px; }
+    .kpi { min-height: 132px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .kpi.featured { border-color: var(--blue); background: var(--navy); color: #f7faff; }
+    .kpi-label { margin-bottom: 14px; color: var(--ink-faint); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .featured .kpi-label { color: #9ebbf3; }
+    .kpi-value { margin-bottom: 5px; font-size: clamp(23px, 3vw, 32px); font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .kpi-note { color: var(--ink-soft); font-size: 12px; }
+    .featured .kpi-note { color: #bfcee4; }
+
+    .section-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .85fr); gap: 16px; align-items: start; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--line); }
+    .panel-title { margin-bottom: 4px; font-size: 17px; letter-spacing: -.02em; }
+    .panel-subtitle { margin: 0; color: var(--ink-soft); font-size: 13px; }
+    .panel-body { padding: 22px 24px; }
+    .chart-key { display: flex; align-items: center; gap: 8px; color: var(--ink-faint); font-size: 11px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--blue); }
+    .rank-chart { display: grid; gap: 15px; }
+    .rank-row { display: grid; grid-template-columns: 164px minmax(120px, 1fr) 68px; align-items: center; gap: 12px; }
+    .rank-name { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-name strong { font-weight: 650; }
+    .rank-track { height: 12px; overflow: hidden; border-radius: 3px; background: var(--surface-alt); }
+    .rank-fill { height: 100%; min-width: 3px; border-radius: 3px; background: #aebdcd; }
+    .rank-row:first-child .rank-fill { background: var(--blue); }
+    .rank-value { color: var(--ink-soft); font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+    .axis { display: flex; justify-content: space-between; padding: 10px 68px 0 176px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; }
+
+    .recommendation { background: var(--navy); color: #f7faff; }
+    .recommendation .panel-head { border-color: rgba(255,255,255,.14); }
+    .recommendation .panel-subtitle { color: #b4c1d2; }
+    .recommendation .panel-body { padding: 24px; }
+    .decision-line { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .decision-tag { padding: 5px 8px; border: 1px solid #668fdc; border-radius: 4px; color: #cfe0ff; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .recommendation h3 { margin-bottom: 10px; font-size: 25px; letter-spacing: -.035em; }
+    .recommendation p { color: #c5d0df; font-size: 14px; }
+    .rule-list { display: grid; gap: 0; margin: 24px 0 0; padding: 0; list-style: none; border-top: 1px solid rgba(255,255,255,.14); }
+    .rule-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.14); color: #dce6f4; font-size: 12px; }
+    .rule-list span { color: #9fb0c5; }
+    .rule-list strong { text-align: right; font-weight: 600; }
+
+    .comparison { margin-top: 16px; }
+    .tabs { display: flex; gap: 4px; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-alt); }
+    .tab { border: 0; border-radius: 4px; padding: 7px 10px; color: var(--ink-soft); background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .tab:hover { color: var(--ink); }
+    .tab:focus-visible { outline: 3px solid rgba(47,109,246,.3); outline-offset: 2px; }
+    .tab.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(27,42,62,.1); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--ink-faint); font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+    td { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+    td:first-child { color: var(--ink); font-weight: 600; }
+    tr.leader td { background: var(--blue-soft); color: var(--blue-dark); }
+    tr.leader td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+    .muted { color: var(--ink-faint); }
+
+    .method { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 16px; border: 1px solid var(--line); background: var(--line); }
+    .method-item { min-height: 95px; padding: 17px 18px; background: var(--surface); }
+    .method-label { margin-bottom: 8px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    .method-value { color: var(--ink); font-size: 14px; font-weight: 600; }
+    .method-note { margin-top: 3px; color: var(--ink-soft); font-size: 12px; }
+    .notice { display: flex; gap: 10px; margin-top: 16px; padding: 13px 15px; border: 1px solid #edd9a2; background: #fff9e8; color: var(--amber); font-size: 12px; }
+    .notice strong { color: #7a4c00; }
+    .m5-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--line); }
+    .m5-item { min-height: 88px; padding: 15px 16px; background: var(--surface); }
+    .m5-label { margin-bottom: 7px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+    .m5-value { color: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+    .m5-note { margin-top: 2px; color: var(--ink-soft); font-size: 11px; }
+    .interpretation-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.5fr); gap: 16px; margin-top: 16px; }
+    .interpretation-copy { color: var(--ink-soft); font-size: 13px; }
+    .interpretation-copy p { margin-bottom: 14px; }
+    .interpretation-copy strong { color: var(--ink); }
+    .interpretation-callout { margin-top: 18px; padding: 13px 14px; border-left: 3px solid var(--blue); background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; }
+    .complementary { margin-top: 16px; }
+    .complementary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); }
+    .complementary-card { min-height: 156px; padding: 16px; background: var(--surface); }
+    .complementary-card p { margin: 10px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
+    .inferential { margin-top: 16px; }
+    .inferential-table th, .inferential-table td { padding: 10px 14px; }
+    .inferential-table td:first-child { min-width: 150px; }
+    .inferential-table .sig { color: var(--green); font-weight: 700; }
+    .reference-list { margin: 16px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+    .reference-list li { padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
+    .reference-list strong { color: var(--ink); }
+    .coef-panel { min-width: 0; }
+    .coef-table-wrap { max-height: 640px; overflow: auto; border-top: 1px solid var(--line); }
+    .coef-table th, .coef-table td { padding: 10px 12px; }
+    .coef-table td:first-child { min-width: 205px; }
+    .coef-positive { color: var(--green) !important; }
+    .coef-negative { color: var(--red) !important; }
+    .coef-significant { font-weight: 700; }
+    .coef-note { padding: 12px 18px; color: var(--ink-faint); font-size: 11px; }
+    footer { width: min(1280px, calc(100% - 48px)); margin: 0 auto; padding: 0 0 32px; color: var(--ink-faint); font-size: 11px; }
+    footer a { color: var(--blue-dark); }
+
+    @media (max-width: 980px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi.featured { grid-column: span 2; }
+      .section-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .topbar-inner, .page, footer { width: min(100% - 28px, 1280px); }
+      main { padding-top: 30px; }
+      .topbar-meta { display: none; }
+      .hero { display: block; }
+      .run-badge { display: inline-block; margin-top: 18px; }
+      .kpi-grid { grid-template-columns: 1fr; }
+      .kpi.featured { grid-column: auto; }
+      .panel-head, .panel-body { padding-left: 16px; padding-right: 16px; }
+      .rank-row { grid-template-columns: 120px minmax(90px, 1fr) 58px; gap: 8px; }
+      .axis { padding-left: 128px; padding-right: 58px; }
+      .method { grid-template-columns: 1fr 1fr; }
+      .m5-grid { grid-template-columns: 1fr 1fr; }
+      .complementary-grid { grid-template-columns: 1fr 1fr; }
+      .interpretation-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 420px) {
+      .complementary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">β</div>
+          <span>PNAD / laboratório de modelos</span>
+        </div>
+        <div class="topbar-meta">
+          <span class="dot" aria-hidden="true"></span>
+          <span>Execução concluída · 22 set 2026</span>
+          <span class="crumb">benchmark / salário-hora</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Modelo preditivo · PNAD Contínua 2013–2025</p>
+          <h1 id="page-title">Qual modelo estima melhor o salário-hora?</h1>
+          <p class="lede">Benchmark temporal para indivíduos de 25 a 65 anos. O M5 ampliado e sua versão regional foram incluídos como alternativas lineares regularizadas; o Gradient Boosting continua liderando a previsão em 2025.</p>
+        </div>
+        <div class="run-badge">teste final · 2025</div>
+      </section>
+
+      <section class="kpi-grid" aria-label="Indicadores principais">
+        <article class="kpi featured">
+          <div class="kpi-label">Modelo líder</div>
+          <div class="kpi-value">Gradient Boosting</div>
+          <div class="kpi-note">menor RMSE no log do salário-hora</div>
+        </article>
+        <article class="kpi">
+          <div class="kpi-label">RMSE log</div>
+          <div class="kpi-value">0,6244</div>
+          <div class="kpi-note">teste 2025</div>
+        </article>
+        <article class="kpi">
+          <div class="kpi-label">MAE salário-hora</div>
+          <div class="kpi-value">R$ 9,88</div>
+          <div class="kpi-note">erro absoluto médio</div>
+        </article>
+        <article class="kpi">
+          <div class="kpi-label">R² log</div>
+          <div class="kpi-value">44,3%</div>
+          <div class="kpi-note">variação explicada no teste</div>
+        </article>
+      </section>
+
+      <section class="section-grid">
+        <article class="panel" aria-labelledby="ranking-title">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title" id="ranking-title">Desempenho fora da amostra</h2>
+              <p class="panel-subtitle">RMSE no log do salário-hora · menor é melhor</p>
+            </div>
+            <div class="chart-key"><span class="legend-dot" aria-hidden="true"></span> teste 2025</div>
+          </div>
+          <div class="panel-body">
+            <div class="rank-chart" id="rank-chart" aria-label="Ranking de modelos por RMSE no teste"></div>
+            <div class="axis" aria-hidden="true"><span>0,0</span><span>0,8</span><span>1,6</span><span>2,4</span></div>
+          </div>
+        </article>
+
+        <article class="panel recommendation" aria-labelledby="recommendation-title">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title" id="recommendation-title">Leitura da decisão</h2>
+              <p class="panel-subtitle">o resultado depende do objetivo</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="decision-line"><span class="decision-tag">previsão</span><span style="color:#9fb0c5;font-size:12px">escolha prática</span></div>
+            <h3>Use Gradient Boosting</h3>
+            <p>Ele teve o menor erro no teste de 2025 e capturou relações não lineares entre idade, escolaridade, setor, atividade e características demográficas.</p>
+            <ul class="rule-list">
+              <li><span>Alternativa próxima</span><strong>Random Forest</strong></li>
+              <li><span>Alternativa linear</span><strong>M5 ampliado · Ridge</strong></li>
+              <li><span>Macroregião + estado</span><strong>M5 hierárquico · Ridge</strong></li>
+              <li><span>Inferência com p-valores</span><strong>M5 base</strong></li>
+              <li><span>Modelo instável</span><strong>MixedLM por coorte</strong></li>
+            </ul>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel comparison" aria-labelledby="comparison-title">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="comparison-title">Tabela comparativa</h2>
+            <p class="panel-subtitle">métricas calculadas na mesma divisão temporal</p>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Período de avaliação">
+            <button class="tab active" role="tab" aria-selected="true" data-period="teste">Teste · 2025</button>
+            <button class="tab" role="tab" aria-selected="false" data-period="validacao">Validação · 2023–24</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Modelo</th><th>RMSE log ↓</th><th>MAE log</th><th>R² log ↑</th><th>MAE salário-hora</th><th>RMSE salário-hora</th><th>R² salário-hora ↑</th></tr></thead>
+            <tbody id="metrics-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="notice" role="note"><strong>M5 ampliado:</strong><span>inclui idade e idade², controles por UF e trimestre, escolaridade categórica, interações da escolaridade com sexo, formalidade e setor público, além de regularização Ridge. No teste de 2025, alcançou RMSE log de 0,6310, contra 0,6444 do M5 base. Os coeficientes lineares agora aparecem abaixo em escala original; o Ridge não recebe p-valores OLS convencionais.</span></div>
+      <div class="notice" role="note"><strong>Modelo regional:</strong><span>o M5 hierárquico Ridge usa uma única regressão com efeito médio de cada macroregião, desvios de estado dentro da macroregião e interações regionais. O Nordeste é a referência e os desvios estaduais têm soma zero dentro de cada macroregião. O alpha selecionado na validação foi 100; RMSE log no teste de 2025: 0,6329.</span></div>
+
+      <section class="panel complementary" aria-labelledby="complementary-title">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="complementary-title">Análises complementares</h2>
+            <p class="panel-subtitle">robustez, heterogeneidade regional e limites de identificação</p>
+          </div>
+          <div class="chart-key"><span class="legend-dot" aria-hidden="true"></span> teste · 2025</div>
+        </div>
+        <div class="complementary-grid">
+          <article class="complementary-card">
+            <div class="m5-label">Pooled vs. separado</div>
+            <div class="m5-value">0,6329</div>
+            <div class="m5-note">RMSE pooled no teste</div>
+            <p>As regressões por macroregião melhoraram modestamente Sudeste, Sul e Centro-Oeste; o modelo pooled foi melhor no Nordeste.</p>
+          </article>
+          <article class="complementary-card">
+            <div class="m5-label">Interações regionais</div>
+            <div class="m5-value">F = 91,07</div>
+            <div class="m5-note">p &lt; 0,001 · 16 termos</div>
+            <p>As interações reduziram o RMSE de teste de 0,6357 para 0,6329. O teste F é referência OLS; a seleção preditiva usa validação Ridge.</p>
+          </article>
+          <article class="complementary-card">
+            <div class="m5-label">Oaxaca · cor</div>
+            <div class="m5-value">70,6%</div>
+            <div class="m5-note">parcela explicada</div>
+            <p>Na diferença entre brancos e não brancos. A parcela não explicada é associativa e não deve ser lida como efeito causal.</p>
+          </article>
+          <article class="complementary-card">
+            <div class="m5-label">Disponibilidade dos dados</div>
+            <div class="m5-value">sem pesos</div>
+            <div class="m5-note">IV não identificado</div>
+            <p>Heckman não foi estimado porque a base consolidada contém apenas ocupados, sem grupo de não ocupados para a equação de seleção.</p>
+          </article>
+        </div>
+        <div class="coef-note"><a href="../pnad_pipeline/data/processed/modelos_salario_hora/analises_complementares.md">Relatório completo</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/comparacao_pooled_separado.csv">pooled vs. separado</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/regressoes_por_macroregiao.csv">macroregiões</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/oaxaca_decomposicao.csv">Oaxaca–Blinder</a></div>
+      </section>
+
+      <section class="panel inferential" aria-labelledby="inferential-title">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="inferential-title">Inferência em toda a base</h2>
+            <p class="panel-subtitle">OLS · 9.064.317 observações elegíveis · p-valores com cluster em duas vias: coorte × UF</p>
+          </div>
+          <div class="chart-key"><span class="legend-dot" aria-hidden="true"></span> significância associativa · 5%</div>
+        </div>
+        <div class="m5-grid">
+          <div class="m5-item"><div class="m5-label">Modelo geral</div><div class="m5-value">76 / 88</div><div class="m5-note">p &lt; 0,05 nominal · BH: 76</div></div>
+          <div class="m5-item"><div class="m5-label">R² geral</div><div class="m5-value">46,0%</div><div class="m5-note">log do salário-hora</div></div>
+          <div class="m5-item"><div class="m5-label">Macroregião com mais sinais</div><div class="m5-value">Norte</div><div class="m5-note">51 / 68 coeficientes</div></div>
+          <div class="m5-item"><div class="m5-label">Método principal</div><div class="m5-value">2 vias</div><div class="m5-note">coorte × UF</div></div>
+        </div>
+        <div class="table-wrap">
+          <table class="inferential-table">
+            <thead><tr><th>Especificação</th><th>Observações</th><th>R²</th><th>Significantes / total</th><th>Erro-padrão</th></tr></thead>
+            <tbody>
+              <tr><td>Geral</td><td>9.064.317</td><td>46,0%</td><td class="sig">76 / 88</td><td>cluster 2 vias</td></tr>
+              <tr><td>Norte</td><td>1.165.888</td><td>42,4%</td><td class="sig">51 / 68</td><td>cluster 2 vias</td></tr>
+              <tr><td>Nordeste</td><td>2.540.028</td><td>44,2%</td><td class="sig">51 / 70</td><td>cluster 2 vias</td></tr>
+              <tr><td>Sudeste</td><td>2.617.853</td><td>42,3%</td><td class="sig">43 / 65</td><td>cluster 2 vias</td></tr>
+              <tr><td>Sul</td><td>1.726.091</td><td>35,6%</td><td class="sig">36 / 64</td><td>cluster 2 vias</td></tr>
+              <tr><td>Centro-Oeste</td><td>1.014.457</td><td>42,7%</td><td class="sig">40 / 65</td><td>cluster 2 vias</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="coef-note"><a href="../pnad_pipeline/data/processed/modelos_salario_hora/inferencial_m5_geral.csv">coeficientes gerais</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/comparacao_especificacoes_inferenciais.csv">comparação dos erros-padrão</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/relatorio_inferencia_m5.md">relatório inferencial</a> · Os CSVs também trazem p-valores ajustados por Benjamini–Hochberg. Significância estatística não equivale a causalidade; a auditoria causal está documentada no relatório.</div>
+      </section>
+
+      <section class="method" aria-label="Desenho da avaliação">
+        <div class="method-item"><div class="method-label">Alvo</div><div class="method-value">log(Salario_Hora)</div><div class="method-note">rendimento habitual / horas semanais</div></div>
+        <div class="method-item"><div class="method-label">Treino</div><div class="method-value">2013–2022</div><div class="method-note">150.000 observações</div></div>
+        <div class="method-item"><div class="method-label">Validação</div><div class="method-value">2023–2024</div><div class="method-note">50.000 observações</div></div>
+        <div class="method-item"><div class="method-label">Teste</div><div class="method-value">2025</div><div class="method-note">50.000 observações</div></div>
+      </section>
+
+      <section class="panel comparison" aria-labelledby="m5-title">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="m5-title">Diagnósticos do M5</h2>
+              <p class="panel-subtitle">M5 base · estimados no treino · erros-padrão agrupados por coorte e UF</p>
+          </div>
+          <div class="chart-key"><span class="legend-dot" aria-hidden="true"></span> especificação do notebook</div>
+        </div>
+        <div class="m5-grid">
+          <div class="m5-item"><div class="m5-label">R² treino</div><div class="m5-value">43,8%</div><div class="m5-note">variação explicada</div></div>
+          <div class="m5-item"><div class="m5-label">R² ajustado</div><div class="m5-value">43,8%</div><div class="m5-note">ajuste por parâmetros</div></div>
+          <div class="m5-item"><div class="m5-label">Estatística F</div><div class="m5-value">2.780,87</div><div class="m5-note">p &lt; 0,001</div></div>
+          <div class="m5-item"><div class="m5-label">Clusters</div><div class="m5-value">117 / 27</div><div class="m5-note">coorte / UF</div></div>
+          <div class="m5-item"><div class="m5-label">Durbin–Watson</div><div class="m5-value">1,996</div><div class="m5-note">resíduos ordenados por ano</div></div>
+          <div class="m5-item"><div class="m5-label">Jarque–Bera</div><div class="m5-value">p &lt; 0,001</div><div class="m5-note">não normalidade dos resíduos</div></div>
+        </div>
+      </section>
+
+      <section class="interpretation-grid" aria-label="Interpretação e coeficientes">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">Como interpretar</h2>
+              <p class="panel-subtitle">o que o benchmark permite concluir</p>
+            </div>
+          </div>
+          <div class="panel-body interpretation-copy">
+            <p><strong>Gradient Boosting</strong> é o melhor modelo para previsão, mas não possui um coeficiente único para cada variável. Ele combina muitas árvores e captura relações não lineares; por isso, sua leitura deve usar importância de variáveis ou explicações locais.</p>
+            <p>O <strong>M5 ampliado</strong> é a melhor alternativa linear geral em erro. Para explicar diferenças geográficas nos dois níveis, o <strong>M5 hierárquico</strong> usa uma única regressão com macroregião, desvios estaduais e interações regionais. A tabela ao lado mostra os coeficientes lineares do M5 ampliado após desfazer a padronização usada pelo Ridge.</p>
+            <div class="interpretation-callout"><strong>Regra de leitura:</strong> para uma variável indicadora, o efeito aproximado é <code>100 × (e<sup>β</sup> − 1)</code>. Idade, idade² e interações devem ser interpretadas em conjunto; o sinal do coeficiente indica a direção preditiva condicionada às demais variáveis.</div>
+            <ul class="reference-list">
+              <li><strong>Referências:</strong> homem, cor branca, Nordeste, agropecuária, ocupação elementar e ano de 2013.</li>
+              <li><strong>Sinal positivo:</strong> associação com maior salário-hora condicionado às demais variáveis.</li>
+              <li><strong>Sinal negativo:</strong> associação com menor salário-hora condicionado às demais variáveis.</li>
+              <li><strong>Ridge:</strong> a regularização reduz coeficientes extremos e melhora a estabilidade preditiva; a tabela não apresenta p-valores OLS.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="panel coef-panel">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">Coeficientes lineares do M5 ampliado · Ridge</h2>
+              <p class="panel-subtitle">escala original das variáveis · α = 1.000 · treino 2013–2022</p>
+            </div>
+          </div>
+          <div class="coef-table-wrap">
+            <table class="coef-table">
+              <thead><tr><th>Variável</th><th>Tipo</th><th>Coeficiente linear</th><th>Efeito aprox. (%)</th><th>Leitura</th></tr></thead>
+              <tbody id="m5-coefficients"></tbody>
+            </table>
+          </div>
+          <div class="coef-note">Os 85 coeficientes estão em <a href="../pnad_pipeline/data/processed/modelos_salario_hora/coeficientes_m5_ampliado_ridge.csv">coeficientes_m5_ampliado_ridge.csv</a>. Os coeficientes regionais e estaduais estão em <a href="../pnad_pipeline/data/processed/modelos_salario_hora/coeficientes_m5_hierarquico_ridge.csv">coeficientes_m5_hierarquico_ridge.csv</a>. Para comparação, os coeficientes do M5 base com erros-padrão estão em <a href="../pnad_pipeline/data/processed/modelos_salario_hora/coeficientes_m5.csv">coeficientes_m5.csv</a>.</div>
+        </article>
+      </section>
+
+      <div class="notice" role="note"><strong>M5:</strong><span>o modelo usa escolaridade, formalidade, setor público, sexo, dummies de setor, ocupação, cor, região e efeitos fixos de ano. As faixas de nascimento foram estendidas até 2003; registros com ano de nascimento inválido usam Ano − Idade para manter a população de 25–65 anos. Os pesos amostrais da PNAD não estão presentes.</span></div>
+    </main>
+    <footer>Fonte: microdados da PNAD Contínua. <a href="../pnad_pipeline/data/processed/modelos_salario_hora/relatorio_modelos.md">ver relatório completo</a></footer>
+  </div>
+
+  <script>
+    const metrics = [
+      { modelo: 'OLS', tipo: 'validacao', mae_log: .4899389729, rmse_log: .6573854811, r2_log: .3981191176, mae_salario_hora: 9.5848618664, rmse_salario_hora: 25.6252769397, r2_salario_hora: .1456828537 },
+      { modelo: 'OLS', tipo: 'teste', mae_log: .4879123448, rmse_log: .6565005322, r2_log: .3844218637, mae_salario_hora: 10.4304495427, rmse_salario_hora: 30.5465279291, r2_salario_hora: .1094580172 },
+      { modelo: 'OLS_efeitos_fixos', tipo: 'validacao', mae_log: .4885081011, rmse_log: .6556474995, r2_log: .4012973902, mae_salario_hora: 9.5606362428, rmse_salario_hora: 25.5719048628, r2_salario_hora: .1492378745 },
+      { modelo: 'OLS_efeitos_fixos', tipo: 'teste', mae_log: .4870855028, rmse_log: .6552301245, r2_log: .3868019945, mae_salario_hora: 10.4115325947, rmse_salario_hora: 30.5025745039, r2_salario_hora: .1120189767 },
+      { modelo: 'GAM_splines_Ridge', tipo: 'validacao', mae_log: .4728053739, rmse_log: .6411278504, r2_log: .4275209230, mae_salario_hora: 9.3287282858, rmse_salario_hora: 25.0871394586, r2_salario_hora: .1811878550 },
+      { modelo: 'GAM_splines_Ridge', tipo: 'teste', mae_log: .4733541812, rmse_log: .6400881185, r2_log: .4148158521, mae_salario_hora: 10.1600319415, rmse_salario_hora: 29.9491272648, r2_salario_hora: .1439501920 },
+      { modelo: 'RandomForest', tipo: 'validacao', mae_log: .4583678767, rmse_log: .6283511175, r2_log: .4501108931, mae_salario_hora: 9.1403049264, rmse_salario_hora: 24.8162991739, r2_salario_hora: .1987721808 },
+      { modelo: 'RandomForest', tipo: 'teste', mae_log: .4589005708, rmse_log: .6284154628, r2_log: .4359641002, mae_salario_hora: 9.9449791600, rmse_salario_hora: 29.6852184939, r2_salario_hora: .1589705739 },
+      { modelo: 'GradientBoosting', tipo: 'validacao', mae_log: .4550959714, rmse_log: .6235187660, r2_log: .4585362449, mae_salario_hora: 9.0658871864, rmse_salario_hora: 24.6822953641, r2_salario_hora: .2074018074 },
+      { modelo: 'GradientBoosting', tipo: 'teste', mae_log: .4566088474, rmse_log: .6244015275, r2_log: .4431465240, mae_salario_hora: 9.8816807127, rmse_salario_hora: 29.5453334603, r2_salario_hora: .1668782290 },
+      { modelo: 'QuantReg_q50', tipo: 'validacao', mae_log: .4876688195, rmse_log: .6653411758, r2_log: .3834630132, mae_salario_hora: 9.5954854920, rmse_salario_hora: 26.2306065913, r2_salario_hora: .1048441476 },
+      { modelo: 'QuantReg_q50', tipo: 'teste', mae_log: .4937383889, rmse_log: .6730448742, r2_log: .3530047928, mae_salario_hora: 10.5655738676, rmse_salario_hora: 31.1897692258, r2_salario_hora: .0715574956 },
+      { modelo: 'MixedLM_coorte', tipo: 'validacao', mae_log: 1.9744904156, rmse_log: 2.1166724638, r2_log: -5.2399003323, mae_salario_hora: 17.1700953379, rmse_salario_hora: 32.5300422916, r2_salario_hora: -.3767378213 },
+      { modelo: 'MixedLM_coorte', tipo: 'teste', mae_log: 2.0461222261, rmse_log: 2.1827933306, r2_log: -5.8051587009, mae_salario_hora: 18.7446337448, rmse_salario_hora: 37.3329291088, r2_salario_hora: -.3301935046 },
+      { modelo: 'M5_ajustado', tipo: 'validacao', mae_log: .4724627229, rmse_log: .6444309916, r2_log: .4216068136, mae_salario_hora: 9.2900291524, rmse_salario_hora: 25.4447019700, r2_salario_hora: .1576807143 },
+      { modelo: 'M5_ajustado', tipo: 'teste', mae_log: .4711635198, rmse_log: .6444390210, r2_log: .4068334128, mae_salario_hora: 10.1283869903, rmse_salario_hora: 30.3518164829, r2_salario_hora: .1207748795 },
+      { modelo: 'M5_ampliado_Ridge', tipo: 'validacao', mae_log: .4634622225, rmse_log: .6331197150, r2_log: .4417329356, mae_salario_hora: 9.1381905394, rmse_salario_hora: 24.9347162453, r2_salario_hora: .1911073890 },
+      { modelo: 'M5_ampliado_Ridge', tipo: 'teste', mae_log: .4617639034, rmse_log: .6309827227, r2_log: .4313461858, mae_salario_hora: 9.9361996271, rmse_salario_hora: 29.8215371084, r2_salario_hora: .1512285514 },
+      { modelo: 'M5_hierarquico_Ridge', tipo: 'validacao', mae_log: .4652179901, rmse_log: .6340559736, r2_log: .4400805834, mae_salario_hora: 9.1513644070, rmse_salario_hora: 25.1252456923, r2_salario_hora: .1786985404 },
+      { modelo: 'M5_hierarquico_Ridge', tipo: 'teste', mae_log: .4631954837, rmse_log: .6329328131, r2_log: .4278258359, mae_salario_hora: 9.9686244390, rmse_salario_hora: 30.0455935328, r2_salario_hora: .1384266126 }
+    ];
+    const labels = { OLS: 'OLS', OLS_efeitos_fixos: 'OLS + efeitos fixos', GAM_splines_Ridge: 'GAM · splines + Ridge', RandomForest: 'Random Forest', GradientBoosting: 'Gradient Boosting', QuantReg_q50: 'Regressão quantílica · q50', MixedLM_coorte: 'MixedLM · coorte', M5_ajustado: 'M5 · base', M5_ampliado_Ridge: 'M5 ampliado · Ridge', M5_hierarquico_Ridge: 'M5 hierárquico · Ridge' };
+    const coeficientesM5Ridge = [
+      { variavel: "Intercept", tipo: "intercepto", coeficiente: 2.3850821169660033, efeito: null, leitura: "nível de referência" },
+      { variavel: "is_formal", tipo: "indicadora", coeficiente: 0.28765933428970114, efeito: 33.33030161285737, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "is_public", tipo: "indicadora", coeficiente: 0.14078799874954195, efeito: 15.118057039285468, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Sexo_Dummy", tipo: "indicadora", coeficiente: -0.10347509200074326, efeito: -9.830151803273427, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Industria_Geral", tipo: "indicadora", coeficiente: 0.028109056873885343, efeito: 2.8507844155669053, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Construcao", tipo: "indicadora", coeficiente: 0.15067863639897658, efeito: 16.262297333535475, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Comercio", tipo: "indicadora", coeficiente: 0.03229043729120398, efeito: 3.281743044509423, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Transporte_Armazenagem_Correio", tipo: "indicadora", coeficiente: 0.14802693979957654, efeito: 15.9544133828772, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Alojamento_Alimentacao", tipo: "indicadora", coeficiente: -0.051441596073023205, efeito: -5.014087615485524, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Info_Comunicacao_Financ_Imob_Prof_Adm", tipo: "indicadora", coeficiente: 0.1130768908154118, efeito: 11.971802567069888, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Adm_Publica", tipo: "indicadora", coeficiente: 0.19467908693577274, efeito: 21.492103988989296, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Educacao_Saude", tipo: "indicadora", coeficiente: -0.027435706484296704, efeito: -2.7062765902058117, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Setor_Outros_Servicos", tipo: "indicadora", coeficiente: 0.0839053666347206, efeito: 8.752597269639235, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Diretores_Gerentes", tipo: "indicadora", coeficiente: 0.18098165852597667, efeito: 19.83931987938975, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Profissionais_Ciencias_Intelectuais", tipo: "indicadora", coeficiente: 0.16770749474612665, efeito: 18.259064607489154, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Tecnicos_Nivel_Medio", tipo: "indicadora", coeficiente: -0.08787250363590135, efeito: -8.412235965119768, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Apoio_Administrativo", tipo: "indicadora", coeficiente: -0.3042330212970686, efeito: -26.231105081459532, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Servicos_Vendedores_Comercio_Mercado", tipo: "indicadora", coeficiente: -0.3126141149894163, efeito: -26.846785459965965, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Qualificados_Agropecuaria_Pesca", tipo: "indicadora", coeficiente: -0.5567262864966478, efeito: -42.691789710182285, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Qualificados_Construcao_Mecanica_Oficios", tipo: "indicadora", coeficiente: -0.2749617743964219, efeito: -24.039884111721086, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Operadores_Instalacoes_Maquinas", tipo: "indicadora", coeficiente: -0.3003066642381393, efeito: -25.940892694272044, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ocup_Forcas_Armadas_Policiais_Bombeiros", tipo: "indicadora", coeficiente: -0.4324254915748962, efeito: -35.106679767587714, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Cor_Preta", tipo: "indicadora", coeficiente: -0.1045235129118724, efeito: -9.924638218254724, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Cor_Amarela", tipo: "indicadora", coeficiente: 0.0492282088865898, efeito: 5.046004770639311, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Cor_Parda", tipo: "indicadora", coeficiente: -0.09434675194176172, efeito: -9.003282535612415, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Cor_Indigena", tipo: "indicadora", coeficiente: -0.12543781571290247, efeito: -11.788938385863625, leitura: "diferença em relação à categoria de referência" },
+      { variavel: "Ano_2014", tipo: "efeito fixo de ano", coeficiente: 0.02897534616952723, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2015", tipo: "efeito fixo de ano", coeficiente: 0.0019148222564671722, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2016", tipo: "efeito fixo de ano", coeficiente: -0.023747980696991893, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2017", tipo: "efeito fixo de ano", coeficiente: -0.017186083331395416, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2018", tipo: "efeito fixo de ano", coeficiente: -0.018307711705451434, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2019", tipo: "efeito fixo de ano", coeficiente: -0.03413746105125157, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2020", tipo: "efeito fixo de ano", coeficiente: -0.022224431997786728, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2021", tipo: "efeito fixo de ano", coeficiente: -0.09322191969724652, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Ano_2022", tipo: "efeito fixo de ano", coeficiente: -0.05132889085930011, efeito: null, leitura: "comparação com 2013" },
+      { variavel: "Idade_centrada", tipo: "contínua", coeficiente: 0.007491078660794648, efeito: null, leitura: "variação de um ano; com termo quadrático" },
+      { variavel: "Idade_centrada_2", tipo: "não linearidade", coeficiente: -0.0002689090090376366, efeito: null, leitura: "curvatura da idade" },
+      { variavel: "UF_12", tipo: "UF", coeficiente: -0.07974927882756519, efeito: -7.6652179784222065, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_13", tipo: "UF", coeficiente: -0.17751040580973532, efeito: -16.264771403815004, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_14", tipo: "UF", coeficiente: -0.059663560420816775, efeito: -5.791856624649193, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_15", tipo: "UF", coeficiente: -0.1821459618983708, efeito: -16.652032473894174, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_16", tipo: "UF", coeficiente: -0.044916852458759496, efeito: -4.392302602211116, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_17", tipo: "UF", coeficiente: -0.06704072450065454, efeito: -6.484288324531935, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_21", tipo: "UF", coeficiente: -0.4061382699590095, efeito: -33.3781956885492, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_22", tipo: "UF", coeficiente: -0.40687861564462, efeito: -33.42750060034736, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_23", tipo: "UF", coeficiente: -0.37930772772840693, efeito: -31.566500859143588, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_24", tipo: "UF", coeficiente: -0.272807360152216, efeito: -23.876058144928162, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_25", tipo: "UF", coeficiente: -0.3019535606213617, efeito: -26.06275999128846, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_26", tipo: "UF", coeficiente: -0.29713337586506355, efeito: -25.705508516723302, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_27", tipo: "UF", coeficiente: -0.2420180832534643, efeito: -21.495801868965543, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_28", tipo: "UF", coeficiente: -0.24431318195080187, efeito: -21.675770150349283, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_29", tipo: "UF", coeficiente: -0.29617428009598357, efeito: -25.634218802909025, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_31", tipo: "UF", coeficiente: -0.06245304005688638, efeito: -6.054282136670422, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_32", tipo: "UF", coeficiente: -0.03402381090303813, efeito: -3.3451510028868614, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_33", tipo: "UF", coeficiente: -0.01618601872186075, efeito: -1.605572902513399, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_35", tipo: "UF", coeficiente: 0.050495874391138666, efeito: 5.179252406149465, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_41", tipo: "UF", coeficiente: 0.06283733760950717, efeito: 6.4853613508734105, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_42", tipo: "UF", coeficiente: 0.08789049205345538, efeito: 9.186854719861955, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_43", tipo: "UF", coeficiente: 0.02262763802640375, efeito: 2.2885584929944955, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_50", tipo: "UF", coeficiente: 0.0683009683045106, efeito: 7.068750299361054, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_51", tipo: "UF", coeficiente: 0.13459278178703576, efeito: 14.407080301180262, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_52", tipo: "UF", coeficiente: 0.050285250031414784, efeito: 5.157101426305047, leitura: "comparação com a UF de referência" },
+      { variavel: "UF_53", tipo: "UF", coeficiente: 0.20082769779994716, efeito: 22.24141290329321, leitura: "comparação com a UF de referência" },
+      { variavel: "Trimestre_2", tipo: "trimestre", coeficiente: 0.0001772947473928053, efeito: 0.017731046503540328, leitura: "comparação com o 1º trimestre" },
+      { variavel: "Trimestre_3", tipo: "trimestre", coeficiente: -0.00105937330077558, efeito: -0.10588123629787091, leitura: "comparação com o 1º trimestre" },
+      { variavel: "Trimestre_4", tipo: "trimestre", coeficiente: -0.0010603427264772552, efeito: -0.10597807617710714, leitura: "comparação com o 1º trimestre" },
+      { variavel: "Estudo_1", tipo: "escolaridade categórica", coeficiente: 0.02472009474058458, efeito: 2.5028169591047105, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_2", tipo: "escolaridade categórica", coeficiente: -0.044124271597826364, efeito: -4.3164957335275105, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_3", tipo: "escolaridade categórica", coeficiente: 0.017532260550349302, efeito: 1.76868527591455, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_4", tipo: "escolaridade categórica", coeficiente: 0.08341818519279262, efeito: 8.699627926376182, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_5", tipo: "escolaridade categórica", coeficiente: 0.16669355894879584, efeito: 18.139218277034573, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_6", tipo: "escolaridade categórica", coeficiente: 0.2330104840876042, efeito: 26.239471431465876, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_7", tipo: "escolaridade categórica", coeficiente: 0.288393287429777, efeito: 33.42819572684504, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_8", tipo: "escolaridade categórica", coeficiente: 0.3042223261524578, efeito: 35.55704013416812, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_9", tipo: "escolaridade categórica", coeficiente: 0.33804966812966203, efeito: 40.221014683116316, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_10", tipo: "escolaridade categórica", coeficiente: 0.3702111732090593, efeito: 44.804036971027, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_11", tipo: "escolaridade categórica", coeficiente: 0.4087723150659282, efeito: 50.496902270076525, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_12", tipo: "escolaridade categórica", coeficiente: 0.46605745262597864, efeito: 59.36985588855179, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_13", tipo: "escolaridade categórica", coeficiente: 0.5623527431985809, efeito: 75.47962322530637, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_14", tipo: "escolaridade categórica", coeficiente: 0.6730207625822375, efeito: 96.01495328098379, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_15", tipo: "escolaridade categórica", coeficiente: 0.6693012295225929, efeito: 95.2872234286997, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_16", tipo: "escolaridade categórica", coeficiente: 0.9537108874137974, efeito: 159.53227622861635, leitura: "comparação com 0 anos de estudo" },
+      { variavel: "Estudo_x_is_formal", tipo: "interação", coeficiente: -0.006083198069721676, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },
+      { variavel: "Estudo_x_is_public", tipo: "interação", coeficiente: 0.0027726426255230926, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },
+      { variavel: "Estudo_x_Sexo_Dummy", tipo: "interação", coeficiente: -0.00859486891992859, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },    ];
+    const fmt = (value, digits = 2) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+    const money = value => `R$ ${fmt(value)}`;
+    const rankData = () => metrics.filter(row => row.tipo === 'teste').sort((a,b) => a.rmse_log - b.rmse_log);
+
+    function renderChart() {
+      const rows = rankData();
+      const max = 2.4;
+      document.querySelector('#rank-chart').innerHTML = rows.map(row => `
+        <div class="rank-row">
+          <div class="rank-name" title="${labels[row.modelo]}"><strong>${labels[row.modelo]}</strong></div>
+          <div class="rank-track"><div class="rank-fill" style="width:${Math.min(100, row.rmse_log / max * 100)}%"></div></div>
+          <div class="rank-value">${fmt(row.rmse_log, 4)}</div>
+        </div>`).join('');
+    }
+
+    function renderTable(period = 'teste') {
+      const rows = metrics.filter(row => row.tipo === period).sort((a,b) => a.rmse_log - b.rmse_log);
+      document.querySelector('#metrics-body').innerHTML = rows.map((row, index) => `
+        <tr class="${index === 0 && period === 'teste' ? 'leader' : ''}">
+          <td>${labels[row.modelo]}${index === 0 && period === 'teste' ? ' <span class="muted">· líder</span>' : ''}</td>
+          <td>${fmt(row.rmse_log, 4)}</td><td>${fmt(row.mae_log, 4)}</td><td>${fmt(row.r2_log, 4)}</td>
+          <td>${money(row.mae_salario_hora)}</td><td>${money(row.rmse_salario_hora)}</td><td>${fmt(row.r2_salario_hora, 4)}</td>
+        </tr>`).join('');
+    }
+
+    const coefficientLabels = {
+      Intercept: 'Constante',
+      is_formal: 'Trabalho formal',
+      is_public: 'Setor público',
+      Sexo_Dummy: 'Mulher (vs. homem)',
+      Idade_centrada: 'Idade centrada (45 anos)',
+      Idade_centrada_2: 'Idade centrada²',
+      Setor_Industria_Geral: 'Setor: indústria geral',
+      Setor_Construcao: 'Setor: construção',
+      Setor_Comercio: 'Setor: comércio',
+      Setor_Transporte_Armazenagem_Correio: 'Setor: transporte e armazenagem',
+      Setor_Alojamento_Alimentacao: 'Setor: alojamento e alimentação',
+      Setor_Info_Comunicacao_Financ_Imob_Prof_Adm: 'Setor: informação e serviços profissionais',
+      Setor_Adm_Publica: 'Setor: administração pública',
+      Setor_Educacao_Saude: 'Setor: educação e saúde',
+      Setor_Outros_Servicos: 'Setor: outros serviços',
+      Ocup_Diretores_Gerentes: 'Ocupação: diretores e gerentes',
+      Ocup_Profissionais_Ciencias_Intelectuais: 'Ocupação: profissionais intelectuais',
+      Ocup_Tecnicos_Nivel_Medio: 'Ocupação: técnicos de nível médio',
+      Ocup_Apoio_Administrativo: 'Ocupação: apoio administrativo',
+      Ocup_Servicos_Vendedores_Comercio_Mercado: 'Ocupação: serviços e vendas',
+      Ocup_Qualificados_Agropecuaria_Pesca: 'Ocupação: agropecuária e pesca',
+      Ocup_Qualificados_Construcao_Mecanica_Oficios: 'Ocupação: construção e ofícios',
+      Ocup_Operadores_Instalacoes_Maquinas: 'Ocupação: operadores de máquinas',
+      Ocup_Forcas_Armadas_Policiais_Bombeiros: 'Ocupação: forças armadas e policiais',
+      Cor_Preta: 'Cor: preta',
+      Cor_Amarela: 'Cor: amarela',
+      Cor_Parda: 'Cor: parda',
+      Cor_Indigena: 'Cor: indígena'
+    };
+    const labelCoefficient = name => coefficientLabels[name]
+      || (name.startsWith('Ano_') ? `Ano: ${name.slice(4)}` : '')
+      || (name.startsWith('UF_') ? `UF: ${name.slice(3)} (vs. UF 11)` : '')
+      || (name.startsWith('Trimestre_') ? `Trimestre: ${name.slice(10)}` : '')
+      || (name.startsWith('Estudo_x_') ? `Escolaridade × ${name.slice(9).replace('is_', '')}` : '')
+      || (name.startsWith('Estudo_') ? `Escolaridade: ${name.slice(7)} anos` : name);
+
+    function renderCoefficients() {
+      document.querySelector('#m5-coefficients').innerHTML = coeficientesM5Ridge.map(row => {
+        const cls = row.coeficiente > 0 ? 'coef-positive' : row.coeficiente < 0 ? 'coef-negative' : '';
+        const effectText = row.efeito === null ? '—' : `${row.efeito >= 0 ? '+' : ''}${fmt(row.efeito, 2)}%`;
+        return `<tr><td>${labelCoefficient(row.variavel)}</td><td>${row.tipo}</td><td class="${cls}">${fmt(row.coeficiente, 4)}</td><td class="${cls}">${effectText}</td><td>${row.leitura}</td></tr>`;
+      }).join('');
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(item => { item.classList.remove('active'); item.setAttribute('aria-selected', 'false'); });
+      tab.classList.add('active'); tab.setAttribute('aria-selected', 'true'); renderTable(tab.dataset.period);
+    }));
+    renderChart();
+    renderTable();
+    renderCoefficients();
+  </script>
+</body>
+</html>

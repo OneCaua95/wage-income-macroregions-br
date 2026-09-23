@@ -52,6 +52,7 @@ pnad_pipeline/data/raw/*
 !pnad_pipeline/data/raw/.gitkeep
 pnad_pipeline/data/processed/*
 !pnad_pipeline/data/processed/.gitkeep
+pnad_pipeline/data/processed/modelos_salario_hora/
 
 # Arquivos de dados pesados e saídas
 *.parquet

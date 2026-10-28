@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Resultados inferenciais do M5 para estimação do salário-hora na PNAD Contínua." />
+  <title>PNAD / Inferência do salário-hora</title>
+  <style>
+    :root {
+      --ink: #18212f;
+      --ink-soft: #566273;
+      --ink-faint: #7c8795;
+      --paper: #f4f6f8;
+      --surface: #ffffff;
+      --surface-alt: #eef2f6;
+      --line: #dce2e9;
+      --line-strong: #c7d0db;
+      --navy: #172337;
+      --blue: #2f6df6;
+      --blue-dark: #1d4fbe;
+      --blue-soft: #e8f0ff;
+      --green: #13795b;
+      --green-soft: #e8f7f0;
+      --amber: #9a6500;
+      --amber-soft: #fff9e8;
+      --red: #ae3d3d;
+      --red-soft: #fff0f0;
+      --radius: 10px;
+      --shadow: 0 10px 30px rgba(26, 42, 64, .07);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); color: var(--ink); }
+    body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.5; }
+    button, input, select { font: inherit; }
+    a { color: var(--blue-dark); }
+    .topbar { background: var(--navy); color: #f4f7fb; border-bottom: 1px solid rgba(255,255,255,.12); }
+    .topbar-inner, .page, footer { width: min(1380px, calc(100% - 48px)); margin: 0 auto; }
+    .topbar-inner { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 600; letter-spacing: -.01em; }
+    .brand-mark { width: 27px; height: 27px; border: 1px solid #8eb4ff; display: grid; place-items: center; color: #8eb4ff; font-family: var(--mono); font-size: 12px; }
+    .crumb { color: #a9b8cb; font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+    main { padding: 42px 0 64px; }
+    .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
+    .eyebrow { margin: 0 0 11px; color: var(--blue-dark); font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 800px; margin-bottom: 11px; font-size: clamp(30px, 4vw, 48px); line-height: 1.04; letter-spacing: -.045em; text-wrap: balance; }
+    .lede { max-width: 830px; margin: 0; color: var(--ink-soft); font-size: 16px; text-wrap: pretty; }
+    .run-badge { flex: 0 0 auto; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-soft); background: rgba(255,255,255,.62); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    .kpi-grid { display: grid; grid-template-columns: 1.25fr repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi { min-height: 118px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .kpi.featured { border-color: var(--blue); background: var(--navy); color: #f7faff; }
+    .kpi-label, .method-label { margin-bottom: 11px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .featured .kpi-label { color: #9ebbf3; }
+    .kpi-value { margin-bottom: 4px; font-size: clamp(21px, 2.5vw, 30px); font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .kpi-note { color: var(--ink-soft); font-size: 11px; }
+    .featured .kpi-note { color: #bfcee4; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .panel + .panel { margin-top: 16px; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 21px 23px 15px; border-bottom: 1px solid var(--line); }
+    .panel-title { margin-bottom: 4px; font-size: 17px; letter-spacing: -.02em; }
+    .panel-subtitle { margin: 0; color: var(--ink-soft); font-size: 13px; }
+    .panel-body { padding: 20px 23px; }
+    .method-grid { display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 1px; background: var(--line); }
+    .method-item { min-height: 88px; padding: 15px 16px; background: var(--surface); }
+    .method-value { color: var(--ink); font-size: 14px; font-weight: 650; }
+    .method-note { margin-top: 3px; color: var(--ink-soft); font-size: 11px; }
+    .method-callout { margin-top: 16px; padding: 13px 15px; border-left: 3px solid var(--blue); background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; }
+    .method-callout.caution { border-left-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
+    .method-callout strong { color: var(--ink); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 16px 23px; border-bottom: 1px solid var(--line); background: #fbfcfd; }
+    .field { display: grid; gap: 5px; }
+    .field label { color: var(--ink-faint); font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .field input, .field select { min-height: 37px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--surface); outline: none; }
+    .field input { min-width: 250px; }
+    .field input:focus, .field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,109,246,.14); }
+    .toolbar-note { margin-left: auto; color: var(--ink-faint); font-size: 11px; }
+    .table-wrap { overflow: auto; max-height: 720px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { position: sticky; top: 0; z-index: 1; color: var(--ink-faint); background: #f9fafb; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+    td { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+    td:first-child { color: var(--ink); font-weight: 600; }
+    tr:hover td { background: #f8fbff; }
+    .variable-cell { min-width: 240px; }
+    .variable-kind { display: block; margin-top: 2px; color: var(--ink-faint); font-size: 10px; font-weight: 400; }
+    .positive { color: var(--green) !important; }
+    .negative { color: var(--red) !important; }
+    .significant { color: var(--green) !important; font-weight: 750; }
+    .not-significant { color: var(--ink-faint) !important; }
+    .status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+    .status.yes { color: var(--green); background: var(--green-soft); }
+    .status.no { color: var(--ink-faint); background: var(--surface-alt); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 13px 23px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    .legend-dot.gray { background: var(--line-strong); }
+    .overview-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .75fr); gap: 16px; }
+    .overview-table th, .overview-table td { padding: 10px 12px; }
+    .overview-table tr.selected td { background: var(--blue-soft); color: var(--blue-dark); }
+    .comparison-table th, .comparison-table td { padding: 9px 10px; }
+    .comparison-table td:first-child { min-width: 130px; }
+    .muted { color: var(--ink-faint); }
+    .error { margin-top: 16px; padding: 14px 16px; border: 1px solid #edb8b8; border-radius: 8px; color: var(--red); background: var(--red-soft); font-size: 13px; }
+    .hidden { display: none !important; }
+    .download-links { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 14px; font-size: 12px; }
+    footer { padding: 0 0 32px; color: var(--ink-faint); font-size: 11px; }
+    footer a { color: var(--blue-dark); }
+
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .kpi.featured { grid-column: span 3; }
+      .method-grid { grid-template-columns: repeat(3, 1fr); }
+      .overview-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .topbar-inner, .page, footer { width: min(100% - 28px, 1380px); }
+      main { padding-top: 30px; }
+      .topbar-inner { min-height: 58px; }
+      .crumb { display: none; }
+      .hero { display: block; }
+      .run-badge { display: inline-block; margin-top: 17px; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .kpi.featured { grid-column: span 2; }
+      .method-grid { grid-template-columns: 1fr 1fr; }
+      .panel-head, .panel-body, .toolbar, .legend { padding-left: 16px; padding-right: 16px; }
+      .field, .field input, .field select { width: 100%; }
+      .toolbar-note { width: 100%; margin-left: 0; }
+      .table-wrap { max-height: 610px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><div class="brand-mark" aria-hidden="true">β</div><span>PNAD / laboratório de inferência</span></div>
+      <div class="crumb">modelo M5 / salário-hora / auditoria</div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">OLS INFERENCIAL · PNAD CONTÍNUA 2013–2025</p>
+        <h1>O que permanece estatisticamente sustentado?</h1>
+        <p class="lede">Leitura completa do M5 ampliado estimado em toda a base elegível e separadamente por macroregião. A página expõe os coeficientes, os erros-padrão, os testes, os intervalos de confiança e o efeito percentual aproximado.</p>
+      </div>
+      <div class="run-badge">95% confiança · 2 vias</div>
+    </section>
+
+    <section id="kpis" class="kpi-grid" aria-label="Indicadores do modelo">
+      <div class="kpi featured"><div class="kpi-label">Especificação ativa</div><div id="kpi-model" class="kpi-value">Carregando…</div><div class="kpi-note">OLS · log(Salario_Hora) · cluster coorte × UF</div></div>
+      <div class="kpi"><div class="kpi-label">Observações</div><div id="kpi-n" class="kpi-value">—</div><div class="kpi-note">registros elegíveis</div></div>
+      <div class="kpi"><div class="kpi-label">R²</div><div id="kpi-r2" class="kpi-value">—</div><div class="kpi-note">variação explicada no log</div></div>
+      <div class="kpi"><div class="kpi-label">RMSE residual</div><div id="kpi-rmse" class="kpi-value">—</div><div class="kpi-note">escala log</div></div>
+      <div class="kpi"><div class="kpi-label">Significantes</div><div id="kpi-significant" class="kpi-value">—</div><div class="kpi-note">p &lt; 0,05 · nominal / BH</div></div>
+      <div class="kpi"><div class="kpi-label">Parâmetros</div><div id="kpi-k" class="kpi-value">—</div><div class="kpi-note">inclui intercepto</div></div>
+    </section>
+
+    <section class="panel" aria-labelledby="method-title">
+      <div class="panel-head"><div><h2 id="method-title" class="panel-title">Como ler esta estimação</h2><p class="panel-subtitle">significância estatística não substitui identificação causal</p></div></div>
+      <div class="panel-body">
+        <div class="method-grid">
+          <div class="method-item"><div class="method-label">Alvo</div><div class="method-value">log(Salario_Hora)</div><div class="method-note">rendimento habitual ÷ horas × 4,33</div></div>
+          <div class="method-item"><div class="method-label">Inferência principal</div><div class="method-value">OLS + cluster 2 vias</div><div class="method-note">coorte de nascimento × UF</div></div>
+          <div class="method-item"><div class="method-label">Controles</div><div class="method-value">M5 ampliado</div><div class="method-note">idade, educação, setor e demografia</div></div>
+          <div class="method-item"><div class="method-label">Intervalo</div><div class="method-value">95%</div><div class="method-note">distribuição t por clusters</div></div>
+          <div class="method-item"><div class="method-label">Ajuste adicional</div><div class="method-value">Benjamini–Hochberg</div><div class="method-note">controle de falsos descobrimentos</div></div>
+        </div>
+        <div class="method-callout"><strong>Regra de decisão:</strong> p &lt; 0,05 rejeita a hipótese de coeficiente igual a zero sob as hipóteses do modelo. O coeficiente é uma associação condicional; o efeito percentual aproximado é <code>100 × (e<sup>β</sup> − 1)</code> e deve ser lido com a unidade da variável.</div>
+        <div class="method-callout caution"><strong>Limite causal:</strong> a base disponível não possui instrumento exógeno, experimento natural ou painel individual identificável. Portanto, esta página não afirma que escolaridade, formalidade, sexo, cor ou qualquer outra variável cause o salário-hora.</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="overview-title">
+      <div class="panel-head"><div><h2 id="overview-title" class="panel-title">Geral e macroregiões</h2><p class="panel-subtitle">selecione uma linha para carregar todos os coeficientes daquela especificação</p></div></div>
+      <div class="overview-layout panel-body">
+        <div class="table-wrap">
+          <table class="overview-table"><thead><tr><th>Modelo</th><th>N</th><th>R²</th><th>RMSE log</th><th>UF</th><th>Coortes</th><th>p &lt; 0,05</th><th>BH &lt; 0,05</th></tr></thead><tbody id="overview-body"></tbody></table>
+        </div>
+        <div>
+          <h3 class="panel-title">Sensibilidade da variância</h3>
+          <p class="panel-subtitle">o método escolhido não é o de menor erro-padrão; é o mais compatível com a dependência regional e de coorte.</p>
+          <div class="table-wrap" style="margin-top:12px"><table class="comparison-table"><thead><tr><th>Estimador</th><th>SE médio</th><th>Significantes</th><th>Graus de liberdade</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="coef-title">
+      <div class="panel-head"><div><h2 id="coef-title" class="panel-title">Coeficientes e significância</h2><p id="coef-subtitle" class="panel-subtitle">carregando especificação geral…</p></div><div id="row-count" class="muted">—</div></div>
+      <div class="toolbar">
+        <div class="field"><label for="model-select">Especificação</label><select id="model-select"></select></div>
+        <div class="field"><label for="variance-select">Erro-padrão / teste</label><select id="variance-select"><option value="cluster_2vias">Cluster 2 vias · principal</option><option value="cluster_uf">Cluster por UF</option><option value="cluster_coorte">Cluster por coorte</option><option value="hc1">HC1</option></select></div>
+        <div class="field"><label for="significance-select">Filtro</label><select id="significance-select"><option value="all">Todos os coeficientes</option><option value="sig">p &lt; 0,05</option><option value="bh">p BH &lt; 0,05</option><option value="not-sig">Não significantes</option></select></div>
+        <div class="field"><label for="search-input">Buscar variável</label><input id="search-input" type="search" placeholder="ex.: escolaridade, UF, idade" /></div>
+        <div id="toolbar-note" class="toolbar-note">—</div>
+      </div>
+      <div class="table-wrap">
+        <table id="coefficient-table">
+          <thead><tr><th>Variável</th><th>Coeficiente β</th><th>Erro-padrão</th><th>t</th><th>p-valor</th><th>p BH</th><th>IC 95% inferior</th><th>IC 95% superior</th><th>Efeito aprox. (%)</th><th>Status</th></tr></thead>
+          <tbody id="coefficient-body"></tbody>
+        </table>
+      </div>
+      <div class="legend"><span><i class="legend-dot"></i> p &lt; 0,05</span><span><i class="legend-dot gray"></i> p ≥ 0,05</span><span>β positivo = associação positiva</span><span>β negativo = associação negativa</span><span>p BH = Benjamini–Hochberg</span></div>
+      <div class="download-links"><a href="../pnad_pipeline/data/processed/modelos_salario_hora/inferencial_m5_geral.csv">CSV geral</a><a href="../pnad_pipeline/data/processed/modelos_salario_hora/comparacao_especificacoes_inferenciais.csv">comparação de variâncias</a><a href="../pnad_pipeline/data/processed/modelos_salario_hora/resumo_inferencia_m5.json">resumo JSON</a><a href="../pnad_pipeline/data/processed/modelos_salario_hora/auditoria_causalidade_m5.json">auditoria causal</a><a href="../dashboard_salario_hora.html">voltar ao benchmark preditivo</a></div>
+    </section>
+
+    <div id="error-box" class="error hidden" role="alert"></div>
+  </main>
+  <footer>Fonte: microdados da PNAD Contínua. Resultados não ponderados pelos pesos amostrais da PNAD.</footer>
+
+  <script>
+    const basePath = '../pnad_pipeline/data/processed/modelos_salario_hora/';
+    const files = {
+      geral: 'inferencial_m5_geral.csv',
+      Norte: 'inferencial_m5_norte.csv',
+      Nordeste: 'inferencial_m5_nordeste.csv',
+      Sudeste: 'inferencial_m5_sudeste.csv',
+      Sul: 'inferencial_m5_sul.csv',
+      'Centro-Oeste': 'inferencial_m5_centro_oeste.csv'
+    };
+    const labels = { geral: 'Geral', Norte: 'Norte', Nordeste: 'Nordeste', Sudeste: 'Sudeste', Sul: 'Sul', 'Centro-Oeste': 'Centro-Oeste' };
+    const state = { summary: null, comparisons: [], datasets: {}, model: 'geral', variance: 'cluster_2vias', filter: 'all', search: '' };
+    const $ = selector => document.querySelector(selector);
+    const fmt = (value, digits = 3) => Number.isFinite(Number(value)) ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value)) : '—';
+    const fmtInt = value => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Number(value));
+    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+    const number = value => { if (value === null || value === undefined || String(value).trim() === '') return NaN; const parsed = Number(String(value).replace(',', '.')); return Number.isFinite(parsed) ? parsed : NaN; };
+
+    function parseCsv(text) {
+      const lines = text.trim().split(/\r?\n/).filter(Boolean);
+      const header = lines.shift().split(',');
+      return lines.map(line => {
+        const values = line.split(',');
+        return Object.fromEntries(header.map((key, index) => [key, values[index] ?? '']));
+      });
+    }
+
+    async function fetchText(path) {
+      const response = await fetch(basePath + path);
+      if (!response.ok) throw new Error(`Não foi possível carregar ${path} (${response.status}).`);
+      return response.text();
+    }
+
+    function summaryFor(model) { return state.summary.modelos.find(row => row.modelo === model) || state.summary.modelos[0]; }
+    function currentRows() { return state.datasets[state.model] || []; }
+    function pColumn(variance) { return `p_valor_${variance}`; }
+    function seColumn(variance) { return `erro_padrao_${variance}`; }
+    function tColumn(variance) { return `t_${variance}`; }
+    function lowerColumn(variance) { return `ic_inferior_${variance}`; }
+    function upperColumn(variance) { return `ic_superior_${variance}`; }
+    function modelKey(label) { return label === 'Geral' ? 'geral' : label; }
+
+    function variableLabel(name) {
+      const exact = {
+        Intercept: 'Constante', is_formal: 'Trabalho formal', is_public: 'Setor público', Sexo_Dummy: 'Mulher (vs. homem)',
+        Idade_centrada: 'Idade centrada (45 anos)', Idade_centrada_2: 'Idade centrada²',
+        Setor_Industria_Geral: 'Setor: indústria geral', Setor_Construcao: 'Setor: construção', Setor_Comercio: 'Setor: comércio',
+        Setor_Transporte_Armazenagem_Correio: 'Setor: transporte e armazenagem', Setor_Alojamento_Alimentacao: 'Setor: alojamento e alimentação',
+        Setor_Info_Comunicacao_Financ_Imob_Prof_Adm: 'Setor: informação e serviços profissionais', Setor_Adm_Publica: 'Setor: administração pública',
+        Setor_Educacao_Saude: 'Setor: educação e saúde', Setor_Outros_Servicos: 'Setor: outros serviços',
+        Ocup_Diretores_Gerentes: 'Ocupação: diretores e gerentes', Ocup_Profissionais_Ciencias_Intelectuais: 'Ocupação: profissionais intelectuais',
+        Ocup_Tecnicos_Nivel_Medio: 'Ocupação: técnicos de nível médio', Ocup_Apoio_Administrativo: 'Ocupação: apoio administrativo',
+        Ocup_Servicos_Vendedores_Comercio_Mercado: 'Ocupação: serviços e vendas', Ocup_Qualificados_Agropecuaria_Pesca: 'Ocupação: agropecuária e pesca',
+        Ocup_Qualificados_Construcao_Mecanica_Oficios: 'Ocupação: construção e ofícios', Ocup_Operadores_Instalacoes_Maquinas: 'Ocupação: operadores de máquinas',
+        Ocup_Forcas_Armadas_Policiais_Bombeiros: 'Ocupação: forças armadas e policiais', Cor_Preta: 'Cor: preta', Cor_Amarela: 'Cor: amarela', Cor_Parda: 'Cor: parda', Cor_Indigena: 'Cor: indígena'
+      };
+      if (exact[name]) return exact[name];
+      if (name.startsWith('Ano_')) return `Ano: ${name.slice(4)}`;
+      if (name.startsWith('UF_')) return `UF: ${name.slice(3)} (vs. UF 11)`;
+      if (name.startsWith('Trimestre_')) return `Trimestre: ${name.slice(10)}`;
+      if (name.startsWith('Estudo_x_')) return `Escolaridade × ${name.slice(9).replace('is_', '')}`;
+      if (name.startsWith('Estudo_')) return `Escolaridade: ${name.slice(7)} anos`;
+      return name;
+    }
+
+    function variableKind(name) {
+      if (name === 'Intercept') return 'intercepto';
+      if (name.startsWith('Estudo_x_')) return 'interação';
+      if (name.startsWith('UF_')) return 'efeito fixo de UF';
+      if (name.startsWith('Ano_')) return 'efeito fixo de ano';
+      if (name.startsWith('Trimestre_')) return 'efeito trimestral';
+      if (name.startsWith('Estudo_')) return 'escolaridade categórica';
+      if (name.includes('Idade')) return 'idade / não linearidade';
+      if (name.startsWith('Cor_')) return 'indicadora de cor';
+      if (name.startsWith('Ocup_')) return 'indicadora de ocupação';
+      if (name.startsWith('Setor_')) return 'indicadora de setor';
+      return 'controle individual';
+    }
+
+    function renderKpis() {
+      const summary = summaryFor(state.model);
+      const rows = currentRows();
+      const p = rows.map(row => number(row[pColumn(state.variance)])).filter(Number.isFinite);
+      const nominal = p.filter(value => value < .05).length;
+      const bh = rows.filter(row => row.significante_5pct_2vias_bh === 'True').length;
+      $('#kpi-model').textContent = labels[state.model];
+      $('#kpi-n').textContent = fmtInt(summary.n_observacoes_elegiveis);
+      $('#kpi-r2').textContent = `${fmt(summary.r2 * 100, 1)}%`;
+      $('#kpi-rmse').textContent = fmt(summary.rmse_residuo_log, 4);
+      $('#kpi-significant').textContent = `${nominal} / ${rows.length}`;
+      $('#kpi-significant').title = `Benjamini–Hochberg: ${bh} coeficientes significantes no modelo geral/macro selecionado`;
+      $('#kpi-k').textContent = fmtInt(summary.k_regressores_incluindo_intercepto);
+      $('#coef-subtitle').textContent = `${labels[state.model]} · ${fmtInt(summary.n_observacoes_elegiveis)} observações · ${summary.inferência_principal}`;
+      $('#row-count').textContent = `${rows.length} coeficientes antes do filtro`;
+      $('#toolbar-note').textContent = `${summary.clusters_uf} clusters UF · ${summary.clusters_coorte} clusters de coorte · gl principal ${Math.min(summary.clusters_uf, summary.clusters_coorte) - 1}`;
+    }
+
+    function renderOverview() {
+      const rows = state.summary.modelos;
+      $('#overview-body').innerHTML = rows.map(row => {
+        const dataset = state.datasets[row.modelo] || [];
+        const p = dataset.map(item => number(item.p_valor_cluster_2vias)).filter(Number.isFinite);
+        const nominal = p.filter(value => value < .05).length;
+        const bh = dataset.filter(item => item.significante_5pct_2vias_bh === 'True').length;
+        return `<tr class="${row.modelo === state.model ? 'selected' : ''}" data-model="${escapeHtml(row.modelo)}"><td>${escapeHtml(labels[row.modelo])}</td><td>${fmtInt(row.n_observacoes_elegiveis)}</td><td>${fmt(row.r2 * 100, 1)}%</td><td>${fmt(row.rmse_residuo_log, 4)}</td><td>${row.clusters_uf}</td><td>${row.clusters_coorte}</td><td>${nominal} / ${dataset.length}</td><td>${bh} / ${dataset.length}</td></tr>`;
+      }).join('');
+      document.querySelectorAll('#overview-body tr').forEach(row => row.addEventListener('click', () => {
+        state.model = row.dataset.model;
+        $('#model-select').value = state.model;
+        renderAll();
+      }));
+    }
+
+    function renderComparison() {
+      const rows = state.comparisons.filter(row => row.modelo === state.model);
+      $('#comparison-body').innerHTML = rows.map(row => `<tr><td>${escapeHtml(row.estimador_variancia)}</td><td>${fmt(number(row.media_erro_padrao), 4)}</td><td>${row.n_significantes_5pct} / ${row.n_coeficientes}</td><td>${fmtInt(row.graus_liberdade_p_valor)}</td></tr>`).join('');
+    }
+
+    function visibleRows() {
+      const variance = state.variance;
+      const pKey = pColumn(variance);
+      return currentRows().filter(row => {
+        const p = number(row[pKey]);
+        const nominal = p < .05;
+        const bh = row.significante_5pct_2vias_bh === 'True';
+        const matchesFilter = state.filter === 'all' || state.filter === 'sig' && nominal || state.filter === 'bh' && bh || state.filter === 'not-sig' && !nominal;
+        const text = `${row.variavel} ${variableLabel(row.variavel)} ${variableKind(row.variavel)}`.toLowerCase();
+        return matchesFilter && (!state.search || text.includes(state.search.toLowerCase()));
+      });
+    }
+
+    function renderCoefficients() {
+      const variance = state.variance;
+      const rows = visibleRows();
+      const pKey = pColumn(variance), seKey = seColumn(variance), tKey = tColumn(variance), loKey = lowerColumn(variance), hiKey = upperColumn(variance);
+      $('#coefficient-body').innerHTML = rows.map(row => {
+        const beta = number(row.coeficiente), p = number(row[pKey]), bh = number(row.p_valor_cluster_2vias_bh), effect = number(row.efeito_percentual_aprox);
+        const signClass = beta > 0 ? 'positive' : beta < 0 ? 'negative' : '';
+        const sig = p < .05;
+        const effectText = Number.isFinite(effect) ? `${effect >= 0 ? '+' : ''}${fmt(effect, 2)}%` : '—';
+        const bhText = Number.isFinite(bh) ? fmt(bh, 4) : '—';
+        return `<tr><td class="variable-cell">${escapeHtml(variableLabel(row.variavel))}<span class="variable-kind">${escapeHtml(variableKind(row.variavel))} · ${escapeHtml(row.variavel)}</span></td><td class="${signClass}">${fmt(beta, 5)}</td><td>${fmt(number(row[seKey]), 5)}</td><td>${fmt(number(row[tKey]), 3)}</td><td class="${sig ? 'significant' : 'not-significant'}">${fmt(p, 5)}</td><td class="${bh < .05 ? 'significant' : 'not-significant'}">${bhText}</td><td>${fmt(number(row[loKey]), 5)}</td><td>${fmt(number(row[hiKey]), 5)}</td><td class="${signClass}">${effectText}</td><td><span class="status ${sig ? 'yes' : 'no'}">${sig ? 'significante' : 'não significante'}</span></td></tr>`;
+      }).join('');
+      $('#row-count').textContent = `${rows.length} de ${currentRows().length} coeficientes exibidos`;
+    }
+
+    function renderSelectors() {
+      $('#model-select').innerHTML = Object.keys(files).map(model => `<option value="${escapeHtml(model)}">${escapeHtml(labels[model])}</option>`).join('');
+      $('#model-select').value = state.model;
+    }
+
+    function renderAll() {
+      renderKpis();
+      renderOverview();
+      renderComparison();
+      renderCoefficients();
+    }
+
+    async function init() {
+      try {
+        const summary = await fetch(`${basePath}resumo_inferencia_m5.json`).then(response => { if (!response.ok) throw new Error('resumo_inferencia_m5.json não encontrado'); return response.json(); });
+        state.summary = summary;
+        await Promise.all(Object.entries(files).map(async ([model, file]) => { state.datasets[model] = parseCsv(await fetchText(file)); }));
+        state.comparisons = parseCsv(await fetchText('comparacao_especificacoes_inferenciais.csv'));
+        renderSelectors();
+        renderAll();
+      } catch (error) {
+        $('#error-box').classList.remove('hidden');
+        $('#error-box').innerHTML = `<strong>Dados não carregados.</strong> ${escapeHtml(error.message)}<br><span>Abra esta página pelo servidor local do projeto, por exemplo: <code>python -m http.server 8765</code> na raiz do projeto.</span>`;
+      }
+    }
+
+    $('#model-select').addEventListener('change', event => { state.model = event.target.value; renderAll(); });
+    $('#variance-select').addEventListener('change', event => { state.variance = event.target.value; renderAll(); });
+    $('#significance-select').addEventListener('change', event => { state.filter = event.target.value; renderCoefficients(); });
+    $('#search-input').addEventListener('input', event => { state.search = event.target.value; renderCoefficients(); });
+    init();
+  </script>
+</body>
+</html>

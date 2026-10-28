@@ -18,6 +18,10 @@ def df_amostra_pnad() -> pd.DataFrame:
     return pd.DataFrame({
         "Ano": [2023, 2023, 2023, 2023],
         "Trimestre": [1, 1, 1, 1],
+        "UF": [35, 21, 41, 50],
+        "UPA": [350000001, 210000001, 410000001, 500000001],
+        "Estrato": [3500001, 2100001, 4100001, 5000001],
+        "V1028": [100.0, 100.0, 100.0, 100.0],
         "Sexo": [1, 2, 1, 2],
         "Cor": [1, 4, 2, 1],
         "Idade": [30, 40, 50, 60],
@@ -95,3 +99,28 @@ def test_calcular_series_taxa_formalidade(df_amostra_pnad: pd.DataFrame):
     assert len(df_form) == 1
     # 2 formais e 2 informais = 50%
     assert df_form["Brasil"].iloc[0] == 50.0
+
+
+def test_medias_e_taxas_usam_peso_final(df_amostra_pnad):
+    df = preparar_variaveis_analise(df_amostra_pnad.assign(V1028=[1.0, 9.0, 1.0, 9.0]))
+    tabela = calcular_series_trimestrais_salario_hora(df)
+    esperado = (df["Salario_Hora"] * df["V1028"]).sum() / df["V1028"].sum()
+    assert tabela.iloc[0]["Brasil"] == round(esperado, 2)
+    assert calcular_series_taxa_formalidade(df).iloc[0]["Brasil"] == 10.0
+
+
+def test_formalidade_nao_inclui_nao_ocupados(df_amostra_pnad):
+    df = preparar_variaveis_analise(df_amostra_pnad.assign(Condicao_Ocupacao=[1, 2, 1, 2]))
+    assert calcular_series_taxa_formalidade(df).iloc[0]["Brasil"] == 100.0
+
+
+def test_base_antiga_sem_peso_exige_recoleta(df_amostra_pnad):
+    with pytest.raises(ValueError, match="01_coletar_pnad"):
+        preparar_variaveis_analise(df_amostra_pnad.drop(columns="V1028"))
+
+
+def test_percentis_refletem_populacao_ponderada(df_amostra_pnad):
+    df = preparar_variaveis_analise(df_amostra_pnad.assign(V1028=[1.0, 1.0, 97.0, 1.0]))
+    row = calcular_series_rendimento_desigualdade(df).iloc[0]
+    assert row["Mediana_P50"] == 6000.0
+    assert row["P10"] == row["P90"] == 6000.0

@@ -26,10 +26,11 @@ class ParquetStreamWriter:
     mantendo o consumo de memória RAM constante O(1).
     """
 
-    def __init__(self, caminho: Union[str, Path], compression: str = "snappy"):
+    def __init__(self, caminho: Union[str, Path], compression: str = "snappy", metadata: Optional[dict[str, str]] = None):
         self.caminho = Path(caminho)
         self.caminho.parent.mkdir(parents=True, exist_ok=True)
         self.compression = compression
+        self.metadata = {k.encode(): v.encode() for k, v in (metadata or {}).items()}
         self._writer: Optional[pq.ParquetWriter] = None
         self._schema: Optional[pa.Schema] = None
         self.total_rows: int = 0
@@ -40,6 +41,8 @@ class ParquetStreamWriter:
             return
 
         table = pa.Table.from_pandas(df, preserve_index=False)
+        if self.metadata:
+            table = table.replace_schema_metadata({**(table.schema.metadata or {}), **self.metadata})
 
         if self._writer is None:
             self._schema = table.schema

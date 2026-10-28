@@ -12,11 +12,14 @@ from typing import Final, Optional
 import numpy as np
 import pandas as pd
 
+from .amostragem import media_ponderada, pesos_amostrais, quantis_ponderados, validar_desenho
+
 logger = logging.getLogger(__name__)
 
 FONTE_DESCRITIVA: Final[str] = (
     "Fonte: Microdados da PNAD Contínua – IBGE (2013–2025). "
     "Valores deflacionados pelo IPCA (Data-base: Jan/2026)."
+    " Estimativas ponderadas pelo peso trimestral calibrado V1028."
 )
 
 IDADE_MINIMA_ANALISE: Final[int] = 25
@@ -36,6 +39,9 @@ VARIAVEIS_DICIONARIO_ANALISE: Final[dict[str, str]] = {
     "Rendimento_hab_Trab_princ": "VD4016",
     "Horas_hab_trabalhadas": "VD4031",
     "UF": "UF",
+    "V1028": "V1028",
+    "Estrato": "Estrato",
+    "UPA": "UPA",
 }
 
 ATIVIDADES_MAP: Final[dict[int, str]] = {
@@ -76,6 +82,8 @@ def preparar_variaveis_analise(
     missing = sorted(required.difference(df.columns))
     if missing:
         raise KeyError(f"Colunas obrigatórias ausentes para a análise: {missing}")
+
+    validar_desenho(df)
 
     df_out = df.copy()
     df_out["Idade"] = pd.to_numeric(df_out["Idade"], errors="coerce")
@@ -177,21 +185,18 @@ def calcular_series_trimestrais_salario_hora(df: pd.DataFrame) -> pd.DataFrame:
     Recria a tabela consolidada histórica com as desagregações por Sexo, Setor,
     Formalidade, Região e Brasil.
     """
-    periodos = sorted(df["Periodo"].unique())
+    pesos_amostrais(df)
     linhas = []
 
-    for per in periodos:
-        sub = df[df["Periodo"] == per]
-        sh_val = sub["Salario_Hora"].dropna()
-
+    for per, sub in df.groupby("Periodo", observed=True, sort=True):
         # Médias gerais e por subgrupos
-        sh_brasil = sh_val.mean()
-        sh_homem = sub.loc[sub["Sexo"] == 1, "Salario_Hora"].mean()
-        sh_mulher = sub.loc[sub["Sexo"] == 2, "Salario_Hora"].mean()
-        sh_publico = sub.loc[sub["Setor"] == "Público", "Salario_Hora"].mean()
-        sh_privado = sub.loc[sub["Setor"] == "Privado", "Salario_Hora"].mean()
-        sh_formal = sub.loc[sub["Formalidade"] == "Formal", "Salario_Hora"].mean()
-        sh_informal = sub.loc[sub["Formalidade"] == "Informal", "Salario_Hora"].mean()
+        sh_brasil = media_ponderada(sub, "Salario_Hora")
+        sh_homem = media_ponderada(sub.loc[sub["Sexo"] == 1], "Salario_Hora")
+        sh_mulher = media_ponderada(sub.loc[sub["Sexo"] == 2], "Salario_Hora")
+        sh_publico = media_ponderada(sub.loc[sub["Setor"] == "Público"], "Salario_Hora")
+        sh_privado = media_ponderada(sub.loc[sub["Setor"] == "Privado"], "Salario_Hora")
+        sh_formal = media_ponderada(sub.loc[sub["Formalidade"] == "Formal"], "Salario_Hora")
+        sh_informal = media_ponderada(sub.loc[sub["Formalidade"] == "Informal"], "Salario_Hora")
 
         row = {
             "Periodo": per,
@@ -209,7 +214,7 @@ def calcular_series_trimestrais_salario_hora(df: pd.DataFrame) -> pd.DataFrame:
 
         # Regiões
         for reg in ["Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste"]:
-            sh_reg = sub.loc[sub["Regiao"] == reg, "Salario_Hora"].mean()
+            sh_reg = media_ponderada(sub.loc[sub["Regiao"] == reg], "Salario_Hora")
             row[reg] = round(sh_reg, 2)
 
         linhas.append(row)
@@ -219,20 +224,19 @@ def calcular_series_trimestrais_salario_hora(df: pd.DataFrame) -> pd.DataFrame:
 
 def calcular_series_rendimento_desigualdade(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula a evolução trimestral dos percentis e métricas de desigualdade do rendimento habitual real."""
-    periodos = sorted(df["Periodo"].unique())
+    pesos_amostrais(df)
     linhas = []
 
-    for per in periodos:
-        sub = df.loc[df["Periodo"] == per, "Rendimento_hab_Trab_princ"].dropna()
+    for per, sub in df.groupby("Periodo", observed=True, sort=True):
+        # O indicador de rendimento se refere a rendimentos positivos válidos.
+        sub = sub.loc[sub["Rendimento_hab_Trab_princ"].gt(0)]
         if sub.empty:
             continue
 
-        p10 = sub.quantile(0.10)
-        p25 = sub.quantile(0.25)
-        p50 = sub.quantile(0.50)  # Mediana
-        p75 = sub.quantile(0.75)
-        p90 = sub.quantile(0.90)
-        media = sub.mean()
+        p10, p25, p50, p75, p90 = quantis_ponderados(
+            sub, "Rendimento_hab_Trab_princ", [0.10, 0.25, 0.50, 0.75, 0.90]
+        )
+        media = media_ponderada(sub, "Rendimento_hab_Trab_princ")
 
         razao_90_10 = p90 / p10 if p10 > 0 else np.nan
         razao_90_50 = p90 / p50 if p50 > 0 else np.nan
@@ -254,16 +258,17 @@ def calcular_series_rendimento_desigualdade(df: pd.DataFrame) -> pd.DataFrame:
 
 def calcular_series_taxa_formalidade(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula a taxa de formalidade (%) trimestral por macrorregião e total Brasil."""
-    periodos = sorted(df["Periodo"].unique())
+    pesos_amostrais(df)
     linhas = []
 
-    for per in periodos:
-        sub = df[df["Periodo"] == per]
-        total = len(sub)
-        if total == 0:
+    for per, sub in df.groupby("Periodo", observed=True, sort=True):
+        # Não ocupados/sem classificação não integram o denominador.
+        sub = sub.loc[sub["Formalidade"].isin(["Formal", "Informal"])].copy()
+        if sub.empty:
             continue
 
-        taxa_brasil = (sub["Formalidade"] == "Formal").mean() * 100
+        sub["indicador_formal"] = sub["Formalidade"].eq("Formal").astype(float)
+        taxa_brasil = media_ponderada(sub, "indicador_formal") * 100
 
         row = {
             "Periodo": per,
@@ -272,7 +277,7 @@ def calcular_series_taxa_formalidade(df: pd.DataFrame) -> pd.DataFrame:
 
         for reg in ["Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste"]:
             sub_reg = sub[sub["Regiao"] == reg]
-            taxa_reg = (sub_reg["Formalidade"] == "Formal").mean() * 100 if len(sub_reg) > 0 else np.nan
+            taxa_reg = media_ponderada(sub_reg, "indicador_formal") * 100
             row[reg] = round(taxa_reg, 2)
 
         linhas.append(row)
@@ -282,7 +287,7 @@ def calcular_series_taxa_formalidade(df: pd.DataFrame) -> pd.DataFrame:
 
 def calcular_retorno_educacao(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula a evolução do salário-hora médio por nível educacional."""
-    periodos = sorted(df["Periodo"].unique())
+    pesos_amostrais(df)
     niveis = [
         "Até Fundamental Incompleto",
         "Fundamental Completo",
@@ -291,12 +296,11 @@ def calcular_retorno_educacao(df: pd.DataFrame) -> pd.DataFrame:
     ]
     linhas = []
 
-    for per in periodos:
-        sub = df[df["Periodo"] == per]
+    for per, sub in df.groupby("Periodo", observed=True, sort=True):
         row = {"Periodo": per}
         for niv in niveis:
-            sub_niv = sub.loc[sub["Escolaridade_Nivel"] == niv, "Salario_Hora"].dropna()
-            row[niv] = round(sub_niv.mean(), 2) if not sub_niv.empty else np.nan
+            sub_niv = sub.loc[sub["Escolaridade_Nivel"] == niv]
+            row[niv] = round(media_ponderada(sub_niv, "Salario_Hora"), 2)
         linhas.append(row)
 
     return pd.DataFrame(linhas)

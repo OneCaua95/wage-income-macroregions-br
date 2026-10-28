@@ -9,11 +9,11 @@ Saídas principais:
 * estabilidade dos coeficientes entre macroregiões;
 * decomposição Oaxaca-Blinder para gênero e cor;
 * correção de seleção de Heckman em dois passos, como sensibilidade;
-* registro explícito da ausência de pesos amostrais e de instrumento válido.
+* registro explícito do uso não ponderado e da ausência de instrumento válido.
 
 As estimativas são associações condicionais e não substituem uma estratégia
-causal. Os resultados não são ponderados porque a base consolidada não contém
-uma variável de peso da PNAD.
+causal. Este benchmark não usa os pesos amostrais. A inferência ponderada com
+UPA e estrato é realizada em 08_inferencia_m5.py.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 from scipy import stats
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.preprocessing import StandardScaler
@@ -298,10 +299,10 @@ def heckman_dois_passos(args):
 
 
 def limitações_base(args):
-    colunas = pd.read_parquet(args.entrada, columns=None).columns.tolist()
-    peso_candidatos = [c for c in colunas if any(t in c.lower() for t in ("peso", "weight", "v1028", "v1029"))]
+    colunas = pq.ParquetFile(args.entrada).schema_arrow.names
+    peso_candidatos = [c for c in colunas if any(t in c.lower() for t in ("peso", "weight", "v1028"))]
     return {
-        "pesos_amostrais": {"status": "não estimado", "colunas_candidatas_encontradas": peso_candidatos, "motivo": "A base consolidada não contém peso amostral; seria necessário reextrair e propagar a variável de peso dos microdados."},
+        "pesos_amostrais": {"status": "não utilizado neste benchmark", "colunas_candidatas_encontradas": peso_candidatos, "motivo": "Este script é exploratório não ponderado; use 08_inferencia_m5.py para inferência com V1028, UPA e estrato."},
         "variaveis_instrumentais": {"status": "não estimado", "motivo": "Não há instrumento exógeno documentado no projeto para escolaridade ou participação no mercado de trabalho; usar UF, ano ou características demográficas como instrumento seria indefensável sem hipótese adicional."},
     }
 
@@ -320,7 +321,7 @@ def salvar_relatorio(args, pooled_valid, pooled_test, separados, comparacao, int
         "## Heckman", "",
         f"Status: {heckman.get('status')}. O resultado e o coeficiente da razão inversa de Mills estão em `heckman_resumo.json` e `heckman_coeficientes.csv`.", "",
         "## Limitações", "",
-        "- A base consolidada não contém pesos amostrais; a análise ponderada não foi estimada.",
+        "- Este benchmark não utiliza os pesos amostrais; a inferência ponderada do M5 está em 08_inferencia_m5.py.",
         "- Não há instrumento exógeno documentado; 2SLS/IV não foi estimado.",
         "- Ridge fornece coeficientes preditivos regularizados, sem p-valores OLS convencionais.",
         "- Todas as estimativas são associações condicionais e não efeitos causais.",

@@ -18,7 +18,7 @@ from .constants import (
     DATA_BASE_DEFLACAO_PADRAO,
 )
 from .deflacao import aplicar_deflacao, calcular_data_referencia_trimestre
-from .filtros import aplicar_filtros
+from pnad_pipeline.analise.amostragem import validar_desenho
 from .io import ParquetStreamWriter
 from .ipca import calcular_fator_acumulado, get_ipca_bc
 from .otimizacao import calcular_memoria_mb, otimizar_tipos
@@ -35,9 +35,10 @@ def processar_periodo(
     extractor: Optional[PNADExtractor] = None,
     data_base_deflacao: Optional[str] = None,
 ) -> tuple[pd.DataFrame, str, float]:
-    """Orquestra a extração, renomeação, filtragem, deflação, região e downcasting de tipos para um período.
+    """Extrai a amostra completa, valida o desenho e aplica deflação e tipos.
 
     Executa em memória controlada, liberando os DataFrames brutos intermediários.
+    Os filtros de domínio são aplicados na análise, depois do cadastro de UPAs.
 
     Parameters
     ----------
@@ -68,15 +69,15 @@ def processar_periodo(
     df = df_raw.rename(columns=COLUMNS_RENAME)
     del df_raw
 
-    # 2) Filtros de qualidade (passada única na memória)
-    df_filtrado = aplicar_filtros(df)
-    del df
+    # Mantém toda a amostra para registrar UPAs antes de selecionar domínios.
+    # Filtrar renda/idade aqui apagaria UPAs com contribuição zero ao domínio.
+    validar_desenho(df)
 
     # 3) Deflação com IPCA
     data_inicio = calcular_data_referencia_trimestre(ano, trimestre)
     fator = calcular_fator_acumulado(df_ipca, data_inicio=data_inicio, data_fim=dt_base)
-    df_deflacionado = aplicar_deflacao(df_filtrado, fator=fator)
-    del df_filtrado
+    df_deflacionado = aplicar_deflacao(df, fator=fator)
+    del df
 
     # 4) Mapeamento de Região
     df_regiao = mapear_regiao(df_deflacionado)
@@ -160,7 +161,7 @@ def coletar_pnad(
     trimestres_sucesso = 0
 
     stream_writer: Optional[ParquetStreamWriter] = (
-        ParquetStreamWriter(saida_parquet) if saida_parquet else None
+        ParquetStreamWriter(saida_parquet, metadata={"pnad_amostra_completa": "true"}) if saida_parquet else None
     )
 
     try:

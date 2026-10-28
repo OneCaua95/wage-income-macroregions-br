@@ -18,8 +18,9 @@ Este notebook realiza uma exploração estatística e econômica descritiva deta
 
 ### Características da Base
 * **Período Histórico**: 2013T1 a 2025T4 (52 trimestres contínuos)
-* **Tamanho da Amostra**: **9.066.345 observações**
-* **Filtros Amostrais de Qualidade**: Indivíduos de 25 a 65 anos com rendimento habitual de trabalho estritamente positivo (> 0).
+* **Tamanho da Amostra**: calculado na execução; registros de trimestres diferentes não são pessoas únicas.
+* **Domínio Analítico**: Ocupados de 25 a 65 anos com rendimento habitual de trabalho estritamente positivo (> 0).
+* **Ponderação**: peso final calibrado `V1028`; as distribuições anuais representam o empilhamento dos trimestres.
 
 ---
 ### Estrutura das Análises
@@ -51,6 +52,7 @@ from pnad_pipeline.analise import (
     calcular_series_trimestrais_salario_hora,
     preparar_variaveis_analise,
 )
+from pnad_pipeline.analise.amostragem import media_ponderada, quantis_ponderados
 
 # Estilização profissional dos gráficos
 sns.set_theme(style="whitegrid", palette="tab10")
@@ -71,7 +73,8 @@ print(f"Caminho do dataset Parquet: {PARQUET_PATH}")
     # Célula 3: Carregamento e Preparação (Código)
     cells.append(nbformat.v4.new_code_cell("""print("Carregando colunas analíticas do Parquet...")
 COLUNAS_ANALISE = [
-    "Ano", "Trimestre", "UF", "Sexo", "Idade", "Cor", "Anos_de_Estudo",
+    "Ano", "Trimestre", "UF", "UPA", "Estrato", "V1028", "Sexo", "Idade", "Cor", "Anos_de_Estudo",
+    "Condicao_Ocupacao",
     "Categoria_emprego", "Contribuicao_previdencia", "Grupo_atv_princ_empreedimento",
     "Rendimento_hab_Trab_princ", "Horas_hab_trabalhadas", "Regiao"
 ]
@@ -81,6 +84,7 @@ print(f"Total de registros carregados: {len(df):,}")
 
 # Criação de variáveis derivadas padronizadas
 df = preparar_variaveis_analise(df)
+df = df.loc[df["Ocupado"] & df["Rendimento_hab_Trab_princ"].gt(0)].copy()
 print("Variáveis analíticas criadas com sucesso.")
 display(df[["Periodo", "Sexo_Desc", "Cor_Desc", "Setor", "Formalidade", "Salario_Hora", "Regiao"]].head(5))
 """))
@@ -240,8 +244,8 @@ anos_comparacao = [2013, 2016, 2019, 2022, 2025]
 cores_anos = ["#4575b4", "#74add1", "#fee090", "#f46d43", "#d73027"]
 
 for ano, cor in zip(anos_comparacao, cores_anos):
-    amostra_ano = df.loc[(df["Ano"] == ano) & (df["Rendimento_hab_Trab_princ"] <= 15000), "Rendimento_hab_Trab_princ"]
-    sns.kdeplot(amostra_ano, ax=ax3, label=f"Ano {ano}", color=cor, linewidth=2.2)
+    amostra_ano = df.loc[(df["Ano"] == ano) & (df["Rendimento_hab_Trab_princ"] <= 15000)]
+    sns.kdeplot(data=amostra_ano, x="Rendimento_hab_Trab_princ", weights="V1028", ax=ax3, label=f"Ano {ano}", color=cor, linewidth=2.2)
 
 ax3.set_title("Curvas de Densidade Estimada (KDE) do Rendimento Real (Até R$ 15.000)", fontweight='bold')
 ax3.set_xlabel("Rendimento Habitual Real (R$ Jan/2026)")
@@ -279,7 +283,8 @@ formatar_eixo_periodo(ax1, periodos, passo=8)
 
 # 2. Composição por Grandes Setores de Atividade Econômica (ano mais recente: 2025)
 ax2 = axes[1]
-sub_setores = df[df["Ano"] == 2025]["Atividade_Desc"].value_counts(normalize=True).sort_values() * 100
+sub_setores = df[df["Ano"] == 2025].groupby("Atividade_Desc", observed=True)["V1028"].sum()
+sub_setores = (sub_setores / sub_setores.sum() * 100).sort_values()
 sub_setores.plot(kind="barh", ax=ax2, color="#2b5c8f")
 ax2.set_title("Composição Ocupacional por Setor (2025)", fontweight='bold')
 ax2.set_xlabel("Participação (%)")
@@ -288,20 +293,20 @@ for i, v in enumerate(sub_setores):
 
 # 3. Jornada Semanal de Trabalho por Sexo e Setor
 ax3 = axes[2]
-sns.boxplot(
-    data=df[df["Horas_hab_trabalhadas"] <= 60],
-    x="Setor",
-    y="Horas_hab_trabalhadas",
-    hue="Sexo_Desc",
-    palette=["#1f77b4", "#e377c2"],
-    ax=ax3,
-    fliersize=0.5,
-    showmeans=True,
-    meanprops={"marker":"o", "markerfacecolor":"white", "markeredgecolor":"black"}
-)
+caixas = []
+jornada = df.loc[df["Horas_hab_trabalhadas"].between(0, 60, inclusive="right")]
+for (setor, sexo), grupo in jornada.groupby(["Setor", "Sexo_Desc"], observed=True):
+    q1, mediana, q3 = quantis_ponderados(grupo, "Horas_hab_trabalhadas", [.25, .5, .75])
+    horas = grupo["Horas_hab_trabalhadas"]
+    iqr = q3 - q1
+    caixas.append({"label": f"{setor} / {sexo}", "q1": q1, "med": mediana, "q3": q3,
+                   "whislo": horas[horas >= q1 - 1.5 * iqr].min(),
+                   "whishi": horas[horas <= q3 + 1.5 * iqr].max(),
+                   "mean": media_ponderada(grupo, "Horas_hab_trabalhadas"), "fliers": []})
+ax3.bxp(caixas, showmeans=True, showfliers=False)
+ax3.tick_params(axis="x", rotation=30)
 ax3.set_title("Jornada Semanal Habitual (Horas/Semana)", fontweight='bold')
 ax3.set_ylabel("Horas Semanais")
-ax3.legend(title="", loc="upper right")
 
 fig.text(0.5, 0.01, FONTE_DESCRITIVA, ha='center', fontsize=9.5, style='italic')
 plt.tight_layout(rect=[0, 0.04, 1, 0.95])
@@ -322,7 +327,7 @@ fig.suptitle("Demografia, Raça/Cor e Retorno Salarial da Educação (2013–202
 
 # 1. Composição Racial ao longo do tempo
 ax1 = axes[0]
-raca_tempo = df.groupby(["Ano", "Cor_Desc"]).size().unstack(fill_value=0)
+raca_tempo = df.groupby(["Ano", "Cor_Desc"], observed=True)["V1028"].sum().unstack(fill_value=0)
 raca_tempo_pct = raca_tempo[["Parda", "Branca", "Preta"]].div(raca_tempo.sum(axis=1), axis=0) * 100
 raca_tempo_pct.plot(kind="area", stacked=True, ax=ax1, color=["#e6ab02", "#7570b3", "#1b9e77"], alpha=0.85)
 ax1.set_title("Composição Racial da Força Ocupada (%)", fontweight='bold')
@@ -348,7 +353,7 @@ formatar_eixo_periodo(ax2, periodos, passo=8)
 
 # 3. Composição por Faixa Etária
 ax3 = axes[2]
-idade_tempo = df.groupby(["Ano", "Faixa_Etaria"]).size().unstack(fill_value=0)
+idade_tempo = df.groupby(["Ano", "Faixa_Etaria"], observed=True)["V1028"].sum().unstack(fill_value=0)
 idade_tempo_pct = idade_tempo.div(idade_tempo.sum(axis=1), axis=0) * 100
 idade_tempo_pct.plot(kind="bar", stacked=True, ax=ax3, colormap="viridis", alpha=0.85)
 ax3.set_title("Distribuição Etária dos Ocupados (%)", fontweight='bold')
@@ -362,20 +367,14 @@ plt.show()
 """))
 
     # Célula 13: Markdown Síntese e Conclusões
-    cells.append(nbformat.v4.new_markdown_cell("""## 5. Resumo dos Fatos Estilizados (2013–2025)
+    cells.append(nbformat.v4.new_markdown_cell("""## 5. Interpretação das estimativas ponderadas
 
-Com base nas mais de **9 milhões de observações** analisadas ao longo de 52 trimestres:
-
-1. **Gap Salarial de Gênero**:
-   * O salário-hora das mulheres permaneceu consistentemente abaixo do dos homens durante todo o período, embora a razão tenha apresentado convergência gradual (queda de aproximadamente 5 a 7 pontos percentuais no gap entre 2013 e 2025).
-2. **Prêmio do Setor Público**:
-   * O setor público mantém um prêmio salarial médio superior a 80–100% sobre o setor privado em termos de salário-hora, reflexo em parte da maior exigência de qualificação e estabilidade estatutária.
-3. **Formalidade e Diferencial Salarial**:
-   * O diferencial formal/informal é persistente: a remuneração por hora no segmento formal é entre 40% e 60% superior à do informal. A formalidade é substancialmente mais alta nas regiões Sul e Sudeste (>65%) em relação a Norte e Nordeste (<45%).
-4. **Retorno da Educação**:
-   * O diploma de nível superior confere um salto marcante de remuneração: trabalhadores com ensino superior completo auferem salário-hora mais que o dobro daqueles com apenas ensino médio completo.
-5. **Envelhecimento da Força de Trabalho**:
-   * Houve um claro deslocamento demográfico entre 2013 e 2025: a participação relativa da faixa de 25–34 anos decresceu, enquanto a faixa de 45–65 anos expandiu expressivamente sua fatia na população ocupada.
+Os resultados devem ser lidos nas tabelas recalculadas nesta execução. Médias,
+percentis, proporções, densidades e quartis usam `V1028` e se referem ao domínio
+de ocupados de 25 a 65 anos com renda positiva. Eles não descrevem toda a
+população brasileira. A soma dos pesos de vários trimestres não conta pessoas
+únicas. Os gráficos são descritivos; intervalos de confiança exigem considerar
+UPA e estrato, como no script de inferência amostral do M5.
 """))
 
     nb.cells = cells

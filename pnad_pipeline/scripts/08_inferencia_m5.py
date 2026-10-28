@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """Estima a versão inferencial do M5 ampliado em toda a base.
 
-O objetivo é separar claramente previsão de inferência. O modelo é OLS para
+O objetivo é separar claramente previsão de inferência. O modelo é ponderado para
 log(Salario_Hora), com a mesma família de controles do M5 ampliado: idade,
 idade ao quadrado, escolaridade categórica, interações da escolaridade,
 formalidade, setor público, sexo, setor, ocupação, cor, UF e efeitos fixos de
 ano. A estimação usa todas as observações elegíveis do Parquet, em lotes, sem
 montar uma matriz com as 9 milhões de linhas em memória.
 
-São comparadas três versões de variância:
+São comparadas versões de variância:
 
 * HC1: robusta a heterocedasticidade;
 * cluster por UF;
-* cluster em duas vias por coorte e UF, escolhida como inferência principal.
+* cluster em duas vias por coorte e UF, como sensibilidade;
+* linearização por UPA dentro de estrato, escolhida como inferência principal.
 
 Os p-valores são válidos apenas sob as hipóteses do modelo e do estimador de
 variância. Eles não provam causalidade. Como a PNAD consolidada disponível é
-uma seção transversal repetida, sem pesos amostrais, instrumento exógeno ou
+uma seção transversal repetida, sem instrumento exógeno ou
 identificador de painel documentado, o script também grava um diagnóstico
 explícito de identificação causal.
 
@@ -32,6 +33,7 @@ import argparse
 import gc
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,10 +41,16 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from scipy import stats
+from scipy.linalg import qr
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from pnad_pipeline.analise.amostragem import (
+    COLUNAS_DESENHO, LinearizacaoUPA, exigir_colunas_desenho, pesos_amostrais, validar_desenho,
+)
 
 SETORES = {
     2: "Setor_Industria_Geral", 3: "Setor_Construcao", 4: "Setor_Comercio",
@@ -73,25 +81,30 @@ RAW_COLUMNS = [
     "Anos_de_Estudo", "Categoria_emprego", "Contribuicao_previdencia",
     "Grupo_atv_princ_empreedimento", "Grupo_ocupacional_no_emprego",
     "Condicao_Ocupacao", "Rendimento_hab_Trab_princ", "Horas_hab_trabalhadas", "Regiao",
+    *COLUNAS_DESENHO,
 ]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--entrada", type=Path, default=PROJECT_ROOT / "data" / "processed" / "pnad_consolidada_2013_2025.parquet")
-    parser.add_argument("--saida-dir", type=Path, default=PROJECT_ROOT / "data" / "processed" / "modelos_salario_hora")
+    parser.add_argument("--saida-dir", type=Path, default=PROJECT_ROOT / "data" / "processed" / "modelos_salario_hora" / "inferencia_amostral")
     parser.add_argument("--batch-size", type=int, default=100_000)
     parser.add_argument("--nivel-confianca", type=float, default=0.95)
+    parser.add_argument("--upa-unica", choices=["erro", "ajustar"], default="erro", help="Tratamento explícito de estratos com uma UPA; ajustar centra na média global dos scores.")
+    parser.add_argument("--upa-multiestrato", choices=["erro", "separar"], default="erro", help="Tratamento explícito de UPA reclassificada; separar usa cada combinação UF/estrato/UPA como versão distinta.")
     return parser.parse_args()
 
 
 def normalizar_lote(batch) -> pd.DataFrame:
     df = batch.to_pandas()
+    validar_desenho(df)
     numericas = [
         "Ano", "Trimestre", "Ano_Nascimento", "Idade", "UF", "Sexo", "Cor",
         "Anos_de_Estudo", "Categoria_emprego", "Contribuicao_previdencia",
         "Grupo_atv_princ_empreedimento", "Grupo_ocupacional_no_emprego",
         "Condicao_Ocupacao", "Rendimento_hab_Trab_princ", "Horas_hab_trabalhadas",
+        *COLUNAS_DESENHO,
     ]
     for col in numericas:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -103,6 +116,8 @@ def normalizar_lote(batch) -> pd.DataFrame:
         & df["Condicao_Ocupacao"].eq(1)
         & df["Rendimento_hab_Trab_princ"].gt(0)
         & df["Horas_hab_trabalhadas"].gt(0)
+        & np.isfinite(df["Rendimento_hab_Trab_princ"])
+        & np.isfinite(df["Horas_hab_trabalhadas"])
         & df["Anos_de_Estudo"].between(0, 16)
         & df["Regiao"].isin(MACROREGIOES)
         & df["UF"].isin(UFS)
@@ -181,6 +196,11 @@ class ResultadoModelo:
     sum_y2: float = 0.0
     beta: np.ndarray | None = None
     sse: float = 0.0
+    sum_abs_residuo_log: float = 0.0
+    sum_abs_residuo_salario_hora: float = 0.0
+    sum_sq_residuo_salario_hora: float = 0.0
+    sum_salario_hora: float = 0.0
+    sum_salario_hora2: float = 0.0
     meat_hc1: np.ndarray | None = None
     score_uf: np.ndarray | None = None
     score_coorte: np.ndarray | None = None
@@ -188,31 +208,58 @@ class ResultadoModelo:
     grupos_uf: dict[int, int] = field(default_factory=dict)
     grupos_coorte: dict[int, int] = field(default_factory=dict)
     grupos_inter: dict[int, int] = field(default_factory=dict)
+    desenho: LinearizacaoUPA = field(default_factory=LinearizacaoUPA)
+    periodos: set[tuple[int, int]] = field(default_factory=set)
+    soma_pesos: float = 0.0
+    soma_pesos2: float = 0.0
+    bread: np.ndarray | None = None
+    indices_ativos: np.ndarray | None = None
 
     def iniciar(self, k: int) -> None:
         self.k = k
         self.xtx = np.zeros((k, k), dtype=np.float64)
         self.xty = np.zeros(k, dtype=np.float64)
 
-    def acumular_normal(self, x: np.ndarray, y: np.ndarray) -> None:
+    def acumular_normal(self, x: np.ndarray, y: np.ndarray, pesos: np.ndarray) -> None:
         if self.xtx is None or self.xty is None:
             self.iniciar(x.shape[1])
-        self.xtx += x.T @ x
-        self.xty += x.T @ y
+        self.xtx += x.T @ (x * pesos[:, None])
+        self.xty += x.T @ (y * pesos)
         self.n += len(y)
-        self.sum_y += float(y.sum())
-        self.sum_y2 += float(y @ y)
+        self.soma_pesos += float(pesos.sum())
+        self.soma_pesos2 += float(pesos @ pesos)
+        self.sum_y += float(pesos @ y)
+        self.sum_y2 += float(pesos @ (y ** 2))
 
     def resolver(self) -> None:
         assert self.xtx is not None and self.xty is not None
-        try:
-            self.beta = np.linalg.solve(self.xtx, self.xty)
-        except np.linalg.LinAlgError:
-            self.beta = np.linalg.pinv(self.xtx, rcond=1e-12) @ self.xty
+        if not self.n:
+            raise ValueError(f"Modelo {self.nome}: nenhuma observação elegível.")
+        # Seleciona colunas identificáveis preservando o intercepto. Em uma
+        # única onda, dummies de ano/trimestre são constantes ou vazias.
+        centrada = self.xtx[1:, 1:] - np.outer(self.xtx[1:, 0], self.xtx[0, 1:]) / self.xtx[0, 0]
+        variancias = np.maximum(np.diag(centrada), 0)
+        candidatas = np.flatnonzero(variancias > np.maximum(np.diag(self.xtx)[1:], 1) * 1e-12)
+        if len(candidatas):
+            escala = np.sqrt(variancias[candidatas])
+            correlacao = centrada[np.ix_(candidatas, candidatas)] / np.outer(escala, escala)
+            _, r, pivots = qr(correlacao, pivoting=True)
+            rank = int(np.sum(np.abs(np.diag(r)) > 1e-10))
+            selecionadas = candidatas[pivots[:rank]] + 1
+        else:
+            selecionadas = np.array([], dtype=int)
+        self.indices_ativos = np.sort(np.r_[0, selecionadas]).astype(int)
+        bloco = self.xtx[np.ix_(self.indices_ativos, self.indices_ativos)]
+        escala = np.sqrt(np.diag(bloco))
+        inversa = np.linalg.inv(bloco / np.outer(escala, escala)) / np.outer(escala, escala)
+        self.bread = np.zeros_like(self.xtx)
+        self.bread[np.ix_(self.indices_ativos, self.indices_ativos)] = inversa
+        self.beta = self.bread @ self.xty
         self.score_uf = np.zeros((len(self.grupos_uf), self.k), dtype=np.float64)
         self.score_coorte = np.zeros((len(self.grupos_coorte), self.k), dtype=np.float64)
         self.score_inter = np.zeros((len(self.grupos_inter), self.k), dtype=np.float64)
         self.meat_hc1 = np.zeros((self.k, self.k), dtype=np.float64)
+        self.desenho.iniciar_scores(self.k)
 
     def registrar_grupos(self, df: pd.DataFrame) -> None:
         for atributo, destino in (("uf_id", self.grupos_uf), ("coorte_id", self.grupos_coorte), ("inter_id", self.grupos_inter)):
@@ -223,9 +270,21 @@ class ResultadoModelo:
 
     def acumular_sanduiche(self, x: np.ndarray, y: np.ndarray, df: pd.DataFrame) -> None:
         assert self.beta is not None and self.meat_hc1 is not None
-        residual = y - x @ self.beta
-        self.sse += float(residual @ residual)
-        self.meat_hc1 += x.T @ (x * (residual ** 2)[:, None])
+        pred_log = x @ self.beta
+        residual = y - pred_log
+        salario_hora = np.exp(np.clip(y, -50, 50))
+        pred_salario_hora = np.exp(np.clip(pred_log, -50, 50))
+        erro_salario_hora = salario_hora - pred_salario_hora
+        w = pesos_amostrais(df)
+        score_residual = w * residual
+        self.sse += float(w @ (residual ** 2))
+        self.sum_abs_residuo_log += float(w @ np.abs(residual))
+        self.sum_abs_residuo_salario_hora += float(w @ np.abs(erro_salario_hora))
+        self.sum_sq_residuo_salario_hora += float(w @ (erro_salario_hora ** 2))
+        self.sum_salario_hora += float(w @ salario_hora)
+        self.sum_salario_hora2 += float(w @ (salario_hora ** 2))
+        self.meat_hc1 += x.T @ (x * (score_residual ** 2)[:, None])
+        self.desenho.acumular(df, x * score_residual[:, None])
         for atributo, mapa, destino in (
             ("uf_id", self.grupos_uf, self.score_uf),
             ("coorte_id", self.grupos_coorte, self.score_coorte),
@@ -237,11 +296,14 @@ class ResultadoModelo:
             for valor in np.unique(ids):
                 grupo = mapa[int(valor)]
                 mask = ids == valor
-                destino[grupo] += x[mask].T @ residual[mask]
+                destino[grupo] += x[mask].T @ score_residual[mask]
 
 
 def iterar_lotes(caminho: Path, batch_size: int):
     parquet = pq.ParquetFile(caminho)
+    exigir_colunas_desenho(parquet.schema_arrow.names)
+    if (parquet.schema_arrow.metadata or {}).get(b"pnad_amostra_completa") == b"false":
+        raise ValueError("A inferência requer a base consolidada completa, anterior ao filtro de idade; use a saída de 01_coletar_pnad.py.")
     yield from parquet.iter_batches(columns=RAW_COLUMNS, batch_size=batch_size, use_threads=True)
 
 
@@ -267,16 +329,18 @@ def cov_cluster(scores: np.ndarray, bread: np.ndarray, n: int, k: int) -> np.nda
 
 def covariancias(modelo: ResultadoModelo) -> dict[str, np.ndarray]:
     assert modelo.xtx is not None and modelo.meat_hc1 is not None
-    bread = np.linalg.pinv(modelo.xtx, rcond=1e-12)
-    hc1 = (modelo.n / max(modelo.n - modelo.k, 1)) * (bread @ modelo.meat_hc1 @ bread)
-    uf = cov_cluster(modelo.score_uf, bread, modelo.n, modelo.k)
-    coorte = cov_cluster(modelo.score_coorte, bread, modelo.n, modelo.k)
-    inter = cov_cluster(modelo.score_inter, bread, modelo.n, modelo.k)
+    assert modelo.bread is not None and modelo.indices_ativos is not None
+    bread = modelo.bread
+    k = len(modelo.indices_ativos)
+    hc1 = (modelo.n / max(modelo.n - k, 1)) * (bread @ modelo.meat_hc1 @ bread)
+    uf = cov_cluster(modelo.score_uf, bread, modelo.n, k)
+    coorte = cov_cluster(modelo.score_coorte, bread, modelo.n, k)
+    inter = cov_cluster(modelo.score_inter, bread, modelo.n, k)
     duas_vias = bread @ (modelo.score_uf.T @ modelo.score_uf + modelo.score_coorte.T @ modelo.score_coorte - modelo.score_inter.T @ modelo.score_inter) @ bread
     # Pequenos autovalores negativos podem surgir apenas por arredondamento.
     eigval, eigvec = np.linalg.eigh((duas_vias + duas_vias.T) / 2)
     duas_vias = eigvec @ np.diag(np.clip(eigval, 0, None)) @ eigvec.T
-    return {"HC1": hc1, "cluster_UF": uf, "cluster_coorte": coorte, "cluster_2vias": duas_vias}
+    return {"desenho_pnad": modelo.desenho.covariancia(bread), "HC1": hc1, "cluster_UF": uf, "cluster_coorte": coorte, "cluster_2vias": duas_vias}
 
 
 def pvalor_t(beta: np.ndarray, cov: np.ndarray, graus_liberdade: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -305,6 +369,7 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
     assert modelo.beta is not None
     covs = covariancias(modelo)
     gl = {
+        "desenho_pnad": modelo.desenho.graus_liberdade,
         "HC1": max(modelo.n - modelo.k, 1),
         "cluster_UF": max(len(modelo.grupos_uf) - 1, 1),
         "cluster_coorte": max(len(modelo.grupos_coorte) - 1, 1),
@@ -312,8 +377,10 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
     }
     alpha = 1 - nivel_confianca
     nomes = ["Intercept"] + nomes_features(modelo.ufs)
-    dados = {"variavel": nomes, "coeficiente": modelo.beta}
+    identificavel = np.isin(np.arange(modelo.k), modelo.indices_ativos)
+    dados = {"variavel": nomes, "coeficiente": np.where(identificavel, modelo.beta, np.nan), "identificavel": identificavel}
     prefixos = {
+        "desenho_pnad": "desenho_pnad",
         "HC1": "hc1",
         "cluster_UF": "cluster_uf",
         "cluster_coorte": "cluster_coorte",
@@ -321,19 +388,25 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
     }
     for metodo, cov in covs.items():
         se, t_stat, p_valor, critico = pvalor_t(modelo.beta, cov, gl[metodo])
+        se = np.where(identificavel, se, np.nan)
+        t_stat = np.where(identificavel, t_stat, np.nan)
+        p_valor = np.where(identificavel, p_valor, np.nan)
         prefixo = prefixos[metodo]
         dados[f"erro_padrao_{prefixo}"] = se
         dados[f"t_{prefixo}"] = t_stat
         dados[f"p_valor_{prefixo}"] = p_valor
-        dados[f"ic_inferior_{prefixo}"] = modelo.beta - stats.t.ppf(1 - alpha / 2, gl[metodo]) * se
-        dados[f"ic_superior_{prefixo}"] = modelo.beta + stats.t.ppf(1 - alpha / 2, gl[metodo]) * se
+        dados[f"ic_inferior_{prefixo}"] = np.where(identificavel, modelo.beta - stats.t.ppf(1 - alpha / 2, gl[metodo]) * se, np.nan)
+        dados[f"ic_superior_{prefixo}"] = np.where(identificavel, modelo.beta + stats.t.ppf(1 - alpha / 2, gl[metodo]) * se, np.nan)
         dados[f"graus_liberdade_{prefixo}"] = gl[metodo]
-    principal = "cluster_2vias"
+    principal = "desenho_pnad"
+    dados["significante_5pct_principal"] = dados["p_valor_desenho_pnad"] < 0.05
+    dados["p_valor_principal_bh"] = ajustar_bh(dados["p_valor_desenho_pnad"])
+    dados["significante_5pct_principal_bh"] = dados["p_valor_principal_bh"] < 0.05
     dados["significante_5pct_2vias"] = dados["p_valor_cluster_2vias"] < 0.05
     dados["p_valor_cluster_2vias_bh"] = ajustar_bh(dados["p_valor_cluster_2vias"])
     dados["significante_5pct_2vias_bh"] = dados["p_valor_cluster_2vias_bh"] < 0.05
     dados["efeito_percentual_aprox"] = np.where(
-        np.arange(len(modelo.beta)) == 0, np.nan, np.expm1(modelo.beta) * 100
+        (np.arange(len(modelo.beta)) == 0) | ~identificavel, np.nan, np.expm1(modelo.beta) * 100
     )
     dados["metodo_principal"] = principal
     return pd.DataFrame(dados)
@@ -341,19 +414,46 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
 
 def resumo_modelo(modelo: ResultadoModelo, nivel_confianca: float) -> dict:
     assert modelo.beta is not None
-    media_y = modelo.sum_y / modelo.n
-    sst = modelo.sum_y2 - 2 * media_y * modelo.sum_y + modelo.n * media_y ** 2
+    media_y = modelo.sum_y / modelo.soma_pesos
+    sst = modelo.sum_y2 - 2 * media_y * modelo.sum_y + modelo.soma_pesos * media_y ** 2
     r2 = 1 - modelo.sse / max(sst, np.finfo(float).eps)
+    media_salario_hora = modelo.sum_salario_hora / modelo.soma_pesos
+    sst_salario_hora = (
+        modelo.sum_salario_hora2
+        - 2 * media_salario_hora * modelo.sum_salario_hora
+        + modelo.soma_pesos * media_salario_hora ** 2
+    )
     return {
         "modelo": modelo.nome,
         "n_observacoes_elegiveis": modelo.n,
         "k_regressores_incluindo_intercepto": modelo.k,
+        "k_parametros_identificaveis": len(modelo.indices_ativos),
         "r2": float(r2),
-        "rmse_residuo_log": float(np.sqrt(modelo.sse / max(modelo.n - modelo.k, 1))),
+        "rmse_residuo_log": float(np.sqrt(modelo.sse / modelo.soma_pesos)),
+        "mae_log": float(modelo.sum_abs_residuo_log / modelo.soma_pesos),
+        "mae_salario_hora": float(modelo.sum_abs_residuo_salario_hora / modelo.soma_pesos),
+        "rmse_salario_hora": float(np.sqrt(modelo.sum_sq_residuo_salario_hora / modelo.soma_pesos)),
+        "r2_salario_hora": float(1 - modelo.sum_sq_residuo_salario_hora / max(sst_salario_hora, np.finfo(float).eps)),
         "clusters_uf": len(modelo.grupos_uf),
         "clusters_coorte": len(modelo.grupos_coorte),
         "clusters_intersecao": len(modelo.grupos_inter),
-        "inferência_principal": "OLS com erro-padrão clusterizado em duas vias por coorte e UF",
+        "inferência_principal": "Regressão ponderada por V1028 com linearização por UPA dentro de estrato",
+        "metodo_principal": "desenho_pnad",
+        "peso_amostral": "V1028",
+        "n_upas_desenho": len(modelo.desenho.grupos),
+        "n_estratos_desenho": len(modelo.desenho.estratos),
+        "graus_liberdade_desenho": modelo.desenho.graus_liberdade,
+        "estratos_upa_unica": sum(len(ids) == 1 for ids in modelo.desenho.estratos.values()),
+        "politica_upa_unica": modelo.desenho.politica_upa_unica,
+        "politica_upa_multiestrato": modelo.desenho.politica_upa_multiestrato,
+        "upas_multiestrato": [
+            {"UF": uf, "UPA": upa, "estratos": estratos}
+            for (uf, upa), estratos in sorted(modelo.desenho.upas_multiestrato.items())
+        ],
+        "n_periodos": len(modelo.periodos),
+        "soma_pesos_pessoa_trimestre": modelo.soma_pesos,
+        "n_efetivo_kish": modelo.soma_pesos ** 2 / modelo.soma_pesos2,
+        "limitacao_temporal": "UPAs recorrentes permanecem agrupadas enquanto mantêm o estrato; reclassificações separadas não têm covariância entre versões estimada. A rotação de domicílios entre trimestres e a renovação gradual da Amostra Mestra iniciada em 2025T3 limitam a aproximação temporal. A soma dos pesos não conta pessoas únicas.",
         "nivel_confianca": nivel_confianca,
         "observacao": "p-valores são associativos e dependem das hipóteses do modelo; não demonstram causalidade.",
     }
@@ -368,7 +468,7 @@ def montar_comparacao(modelo: ResultadoModelo, nivel_confianca: float) -> pd.Dat
     covs = covariancias(modelo)
     linhas = []
     for metodo, cov in covs.items():
-        gl = max(modelo.n - modelo.k, 1) if metodo == "HC1" else max(len(modelo.grupos_uf) - 1, 1) if metodo == "cluster_UF" else max(len(modelo.grupos_coorte) - 1, 1) if metodo == "cluster_coorte" else max(min(len(modelo.grupos_uf), len(modelo.grupos_coorte)) - 1, 1)
+        gl = modelo.desenho.graus_liberdade if metodo == "desenho_pnad" else max(modelo.n - modelo.k, 1) if metodo == "HC1" else max(len(modelo.grupos_uf) - 1, 1) if metodo == "cluster_UF" else max(len(modelo.grupos_coorte) - 1, 1) if metodo == "cluster_coorte" else max(min(len(modelo.grupos_uf), len(modelo.grupos_coorte)) - 1, 1)
         se, _, p, _ = pvalor_t(modelo.beta, cov, gl)
         linhas.append({
             "modelo": modelo.nome,
@@ -377,22 +477,34 @@ def montar_comparacao(modelo: ResultadoModelo, nivel_confianca: float) -> pd.Dat
             "graus_liberdade_p_valor": gl,
             "media_erro_padrao": float(np.nanmean(se)),
             "n_significantes_5pct": int(np.sum(p < 0.05)),
-            "n_coeficientes": len(p),
-            "proporcao_significante_5pct": float(np.mean(p < 0.05)),
-            "criterio_principal": metodo == "cluster_2vias",
+            "n_coeficientes": int(np.isfinite(p).sum()),
+            "proporcao_significante_5pct": float(np.sum(p < 0.05) / max(np.isfinite(p).sum(), 1)),
+            "criterio_principal": metodo == "desenho_pnad",
             "nota": "a comparação mostra sensibilidade da inferência; menor erro-padrão não é critério suficiente para escolher um estimador.",
         })
     return pd.DataFrame(linhas)
 
 
 def executar(args: argparse.Namespace) -> int:
+    if args.batch_size <= 0 or not 0 < args.nivel_confianca < 1:
+        raise ValueError("Lote deve ser positivo e nível de confiança deve estar entre 0 e 1.")
+    exigir_colunas_desenho(pq.ParquetFile(args.entrada).schema_arrow.names)
     args.saida_dir.mkdir(parents=True, exist_ok=True)
     modelos = construir_modelos()
     for modelo in modelos.values():
+        modelo.desenho.politica_upa_unica = getattr(args, "upa_unica", "erro")
+        modelo.desenho.politica_upa_multiestrato = getattr(args, "upa_multiestrato", "erro")
         modelo.iniciar(len(nomes_features(modelo.ufs)) + 1)
 
-    print(f"Primeira passada: acumulando X'X e X'y em lotes de {args.batch_size:,} linhas")
+    print(f"Primeira passada: acumulando X'WX e X'Wy em lotes de {args.batch_size:,} linhas")
     for batch in iterar_lotes(args.entrada, args.batch_size):
+        # O cadastro usa toda a amostra, antes dos filtros de renda e idade.
+        amostra = batch.to_pandas()
+        for nome, modelo in modelos.items():
+            cadastro = subamostra_modelo(amostra, nome)
+            modelo.desenho.registrar(cadastro)
+            modelo.periodos.update((int(a), int(t)) for a, t in cadastro[["Ano", "Trimestre"]].drop_duplicates().itertuples(index=False, name=None))
+        del amostra, cadastro
         df = normalizar_lote(batch)
         if df.empty:
             continue
@@ -401,7 +513,7 @@ def executar(args: argparse.Namespace) -> int:
             if parte.empty:
                 continue
             x = matriz_m5(parte, modelo.ufs)
-            modelo.acumular_normal(x, parte["y"].to_numpy(dtype=float))
+            modelo.acumular_normal(x, parte["y"].to_numpy(dtype=float), pesos_amostrais(parte))
             modelo.registrar_grupos(parte)
             del x, parte
         del df
@@ -444,12 +556,11 @@ def executar(args: argparse.Namespace) -> int:
     comparacoes.to_csv(args.saida_dir / "comparacao_especificacoes_inferenciais.csv", index=False)
     causalidade = {
         "status": "não identificada",
-        "modelo_inferencial": "OLS em log(Salario_Hora) com controles, efeitos fixos de ano e UF e erros-padrão em duas vias",
+        "modelo_inferencial": "Regressão ponderada por V1028 em log(Salario_Hora), com controles e linearização por UPA e estrato",
         "motivos": [
             "a base é uma seção transversal repetida; não há identificador de painel individual documentado",
             "não há instrumento exógeno documentado para escolaridade, formalidade, sexo ou cor",
             "não há experimento natural ou regra de descontinuidade implementada",
-            "a base consolidada não contém pesos amostrais PNAD",
             "p-valores medem associação condicional, não efeito causal",
         ],
         "proximo_desenho_necessario": "instrumento ou choque exógeno defensável, hipóteses explícitas e erros compatíveis com o desenho amostral",
@@ -459,7 +570,16 @@ def executar(args: argparse.Namespace) -> int:
         "entrada": str(args.entrada),
         "batch_size": args.batch_size,
         "nivel_confianca": args.nivel_confianca,
-        "modelo_principal": "OLS com cluster em duas vias por coorte e UF",
+        "modelo_principal": "Regressão ponderada por V1028 com variância por UPA e estrato",
+        "metodo_principal": "desenho_pnad",
+        "ponderado": True,
+        "politica_upa_unica": getattr(args, "upa_unica", "erro"),
+        "politica_upa_multiestrato": getattr(args, "upa_multiestrato", "erro"),
+        "upas_multiestrato_desenho_geral": [
+            {"UF": uf, "UPA": upa, "estratos": estratos}
+            for (uf, upa), estratos in sorted(modelos["geral"].desenho.upas_multiestrato.items())
+        ],
+        "aproximacao_variancia": "Conglomerado primário com reposição, sem FPC e sem recalibrar os pesos finais. UPAs recorrentes permanecem agrupadas enquanto mantêm o estrato; com upa-multiestrato=separar, cada versão (UF, estrato, UPA) é separada e a covariância entre versões não é estimada. A rotação de domicílios entre trimestres e a renovação gradual da Amostra Mestra iniciada em 2025T3 limitam a aproximação temporal.",
         "modelos": todos_resumos,
         "arquivos_coeficientes": [f"inferencial_m5_{slug(nome)}.csv" for nome in modelos],
         "limitacao_causal": "A estimação fornece significância associativa; não prova causalidade.",
@@ -472,9 +592,11 @@ def executar(args: argparse.Namespace) -> int:
         "",
         "## Especificação escolhida",
         "",
-        "A versão principal é OLS para `log(Salario_Hora)`, com escolaridade categórica, idade e idade², formalidade, setor público, sexo, setor, ocupação, cor, UF e efeitos fixos de ano. Os erros-padrão principais são clusterizados em duas vias por coorte e UF.",
+        "A versão principal é uma regressão ponderada por `V1028` para `log(Salario_Hora)`, com escolaridade categórica, idade e idade², formalidade, setor público, sexo, setor, ocupação, cor, UF e efeitos fixos de ano e trimestre. Os erros-padrão usam linearização por UPA dentro de estrato, com graus de liberdade iguais ao número de UPAs menos o número de estratos.",
         "",
-        "HC1, cluster por UF e cluster por coorte foram calculados como análises de sensibilidade. A escolha da variância em duas vias não significa escolher o menor erro-padrão; ela busca refletir dependência simultânea dentro da coorte e da UF.",
+        "HC1, cluster por UF, por coorte e em duas vias foram calculados como sensibilidades ponderadas. Eles não substituem UPA e estrato. O cadastro completo de UPAs é registrado antes da seleção de pessoas ocupadas de 25 a 65 anos com renda e horas positivas.",
+        "",
+        f"No empilhamento temporal, uma UPA recorrente permanece no mesmo conglomerado enquanto mantém o estrato. A variância é uma aproximação com reposição, sem FPC ou recalibração. Política de UPA reclassificada: {getattr(args, 'upa_multiestrato', 'erro')}. Quando 'separar' é usado, cada combinação (UF, estrato, UPA) é tratada como uma versão distinta; a covariância entre versões não é estimada. UPAs reclassificadas encontradas: {modelos['geral'].desenho.upas_multiestrato}. Política de UPA única nesta execução: {getattr(args, 'upa_unica', 'erro')}. A opção ajustar centra o score na média de todas as UPAs, sem presumir variância nula. A PNAD revisita domicílios por trimestres consecutivos e iniciou a renovação gradual da Amostra Mestra em 2025T3; essa dependência temporal limita a aproximação empilhada. A soma de V1028 representa pessoas-trimestres, não pessoas únicas; o tamanho efetivo de Kish é apenas um diagnóstico dos pesos.",
         "",
         "## Interpretação",
         "",
@@ -482,7 +604,7 @@ def executar(args: argparse.Namespace) -> int:
         "",
         "## Causalidade",
         "",
-        "A causalidade não foi identificada. A PNAD consolidada disponível não fornece, sozinha, instrumento exógeno, experimento natural ou painel individual identificável; além disso, não contém pesos amostrais. Os resultados devem ser descritos como associações condicionais.",
+        "A causalidade não foi identificada. A ponderação melhora a representação do domínio analisado, mas não fornece instrumento exógeno, experimento natural ou identificação causal. Os resultados descrevem associações condicionais.",
         "",
         "## Arquivos",
         "",

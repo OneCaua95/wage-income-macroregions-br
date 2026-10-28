@@ -14,6 +14,9 @@ DTYPES_MAPEAMENTO: Final[dict[str, str]] = {
     "Ano": "int16",
     "Trimestre": "int8",
     "UF": "int8",
+    "UPA": "Int64",
+    "Estrato": "Int64",
+    "V1028": "float64",
     "Sexo": "int8",
     "Ano_Nascimento": "Int16",
     "Cor": "Int8",
@@ -70,8 +73,8 @@ def otimizar_tipos(df: pd.DataFrame) -> pd.DataFrame:
                     # Converte para numérico e depois aplica o tipo inteiro nullable ou padrão
                     num = pd.to_numeric(df_opt[col], errors="coerce")
                     df_opt[col] = num.astype(target_type)
-                elif target_type == "float32":
-                    df_opt[col] = pd.to_numeric(df_opt[col], errors="coerce").astype("float32")
+                elif target_type in {"float32", "float64"}:
+                    df_opt[col] = pd.to_numeric(df_opt[col], errors="coerce").astype(target_type)
                 elif target_type == "category":
                     df_opt[col] = df_opt[col].astype("category")
             except Exception as e:

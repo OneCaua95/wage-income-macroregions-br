@@ -256,7 +256,7 @@
               <li><span>Alternativa próxima</span><strong>Random Forest</strong></li>
               <li><span>Alternativa linear</span><strong>M5 ampliado · Ridge</strong></li>
               <li><span>Macroregião + estado</span><strong>M5 hierárquico · Ridge</strong></li>
-              <li><span>Inferência com p-valores</span><strong>M5 base</strong></li>
+              <li><span>Inferência com p-valores</span><strong>M5 inferencial · OLS 2 vias</strong></li>
               <li><span>Modelo instável</span><strong>MixedLM por coorte</strong></li>
             </ul>
           </div>
@@ -267,11 +267,12 @@
         <div class="panel-head">
           <div>
             <h2 class="panel-title" id="comparison-title">Tabela comparativa</h2>
-            <p class="panel-subtitle">métricas calculadas na mesma divisão temporal</p>
+            <p class="panel-subtitle" id="comparison-subtitle">métricas calculadas na mesma divisão temporal</p>
           </div>
           <div class="tabs" role="tablist" aria-label="Período de avaliação">
             <button class="tab active" role="tab" aria-selected="true" data-period="teste">Teste · 2025</button>
             <button class="tab" role="tab" aria-selected="false" data-period="validacao">Validação · 2023–24</button>
+            <button class="tab" role="tab" aria-selected="false" data-period="inferencial">Inferencial · 2013–25</button>
           </div>
         </div>
         <div class="table-wrap">
@@ -349,7 +350,7 @@
             </tbody>
           </table>
         </div>
-        <div class="coef-note"><a href="../pnad_pipeline/data/processed/modelos_salario_hora/inferencial_m5_geral.csv">coeficientes gerais</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/comparacao_especificacoes_inferenciais.csv">comparação dos erros-padrão</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/relatorio_inferencia_m5.md">relatório inferencial</a> · Os CSVs também trazem p-valores ajustados por Benjamini–Hochberg. Significância estatística não equivale a causalidade; a auditoria causal está documentada no relatório.</div>
+        <div class="coef-note"><a href="../pnad_pipeline/data/processed/modelos_salario_hora/inferencial_m5_geral.csv">coeficientes gerais</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/comparacao_especificacoes_inferenciais.csv">comparação dos erros-padrão</a> · <a href="../pnad_pipeline/data/processed/modelos_salario_hora/relatorio_inferencia_m5.md">relatório inferencial</a> · <a href="inferencia_m5_autonomo.html">ficha inferencial completa</a> · Os CSVs também trazem p-valores ajustados por Benjamini–Hochberg. Significância estatística não equivale a causalidade; a auditoria causal está documentada no relatório.</div>
       </section>
 
       <section class="method" aria-label="Desenho da avaliação">
@@ -441,9 +442,10 @@
       { modelo: 'M5_ampliado_Ridge', tipo: 'validacao', mae_log: .4634622225, rmse_log: .6331197150, r2_log: .4417329356, mae_salario_hora: 9.1381905394, rmse_salario_hora: 24.9347162453, r2_salario_hora: .1911073890 },
       { modelo: 'M5_ampliado_Ridge', tipo: 'teste', mae_log: .4617639034, rmse_log: .6309827227, r2_log: .4313461858, mae_salario_hora: 9.9361996271, rmse_salario_hora: 29.8215371084, r2_salario_hora: .1512285514 },
       { modelo: 'M5_hierarquico_Ridge', tipo: 'validacao', mae_log: .4652179901, rmse_log: .6340559736, r2_log: .4400805834, mae_salario_hora: 9.1513644070, rmse_salario_hora: 25.1252456923, r2_salario_hora: .1786985404 },
-      { modelo: 'M5_hierarquico_Ridge', tipo: 'teste', mae_log: .4631954837, rmse_log: .6329328131, r2_log: .4278258359, mae_salario_hora: 9.9686244390, rmse_salario_hora: 30.0455935328, r2_salario_hora: .1384266126 }
+      { modelo: 'M5_hierarquico_Ridge', tipo: 'teste', mae_log: .4631954837, rmse_log: .6329328131, r2_log: .4278258359, mae_salario_hora: 9.9686244390, rmse_salario_hora: 30.0455935328, r2_salario_hora: .1384266126 },
+      { modelo: 'M5_inferencial_2vias', tipo: 'inferencial', mae_log: .4607700846, rmse_log: .6293810936, r2_log: .4602102821, mae_salario_hora: 8.7418513737, rmse_salario_hora: 26.0020834028, r2_salario_hora: .1823654570, escopo: '9.064.317 observações · OLS' }
     ];
-    const labels = { OLS: 'OLS', OLS_efeitos_fixos: 'OLS + efeitos fixos', GAM_splines_Ridge: 'GAM · splines + Ridge', RandomForest: 'Random Forest', GradientBoosting: 'Gradient Boosting', QuantReg_q50: 'Regressão quantílica · q50', MixedLM_coorte: 'MixedLM · coorte', M5_ajustado: 'M5 · base', M5_ampliado_Ridge: 'M5 ampliado · Ridge', M5_hierarquico_Ridge: 'M5 hierárquico · Ridge' };
+    const labels = { OLS: 'OLS', OLS_efeitos_fixos: 'OLS + efeitos fixos', GAM_splines_Ridge: 'GAM · splines + Ridge', RandomForest: 'Random Forest', GradientBoosting: 'Gradient Boosting', QuantReg_q50: 'Regressão quantílica · q50', MixedLM_coorte: 'MixedLM · coorte', M5_ajustado: 'M5 · base', M5_ampliado_Ridge: 'M5 ampliado · Ridge', M5_hierarquico_Ridge: 'M5 hierárquico · Ridge', M5_inferencial_2vias: 'M5 inferencial · OLS 2 vias' };
     const coeficientesM5Ridge = [
       { variavel: "Intercept", tipo: "intercepto", coeficiente: 2.3850821169660033, efeito: null, leitura: "nível de referência" },
       { variavel: "is_formal", tipo: "indicadora", coeficiente: 0.28765933428970114, efeito: 33.33030161285737, leitura: "diferença em relação à categoria de referência" },
@@ -530,8 +532,8 @@
       { variavel: "Estudo_x_is_formal", tipo: "interação", coeficiente: -0.006083198069721676, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },
       { variavel: "Estudo_x_is_public", tipo: "interação", coeficiente: 0.0027726426255230926, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },
       { variavel: "Estudo_x_Sexo_Dummy", tipo: "interação", coeficiente: -0.00859486891992859, efeito: null, leitura: "variação da escolaridade condicionada ao grupo" },    ];
-    const fmt = (value, digits = 2) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
-    const money = value => `R$ ${fmt(value)}`;
+    const fmt = (value, digits = 2) => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? '—' : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value));
+    const money = value => value === null || value === undefined ? '—' : `R$ ${fmt(value)}`;
     const rankData = () => metrics.filter(row => row.tipo === 'teste').sort((a,b) => a.rmse_log - b.rmse_log);
 
     function renderChart() {
@@ -545,11 +547,18 @@
         </div>`).join('');
     }
 
+    const periodNotes = {
+      teste: 'métricas calculadas na mesma divisão temporal · teste fora da amostra em 2025',
+      validacao: 'métricas calculadas na mesma divisão temporal · validação em 2023–2024',
+      inferencial: 'OLS inferencial estimado na amostra completa · cluster em duas vias por coorte e UF; não é uma métrica fora da amostra'
+    };
+
     function renderTable(period = 'teste') {
       const rows = metrics.filter(row => row.tipo === period).sort((a,b) => a.rmse_log - b.rmse_log);
+      document.querySelector('#comparison-subtitle').textContent = periodNotes[period];
       document.querySelector('#metrics-body').innerHTML = rows.map((row, index) => `
         <tr class="${index === 0 && period === 'teste' ? 'leader' : ''}">
-          <td>${labels[row.modelo]}${index === 0 && period === 'teste' ? ' <span class="muted">· líder</span>' : ''}</td>
+          <td>${labels[row.modelo]}${index === 0 && period === 'teste' ? ' <span class="muted">· líder preditivo</span>' : ''}${row.escopo ? ` <span class="muted">· ${row.escopo}</span>` : ''}</td>
           <td>${fmt(row.rmse_log, 4)}</td><td>${fmt(row.mae_log, 4)}</td><td>${fmt(row.r2_log, 4)}</td>
           <td>${money(row.mae_salario_hora)}</td><td>${money(row.rmse_salario_hora)}</td><td>${fmt(row.r2_salario_hora, 4)}</td>
         </tr>`).join('');

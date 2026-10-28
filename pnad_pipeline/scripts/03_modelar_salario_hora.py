@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--saida-dir",
         type=Path,
-        default=_PROJECT_ROOT / "data" / "processed" / "modelos_salario_hora",
+        default=_PROJECT_ROOT / "data" / "processed" / "modelos_salario_hora" / "benchmark_validacao",
         help="Diretório dos resultados da comparação.",
     )
     parser.add_argument(
@@ -111,7 +111,7 @@ def carregar_base(caminho: Path) -> pd.DataFrame:
         raise FileNotFoundError(f"Base tratada não encontrada: {caminho}")
     colunas = [c for c in MODEL_COLUMNS if c not in {"Faixa_Etaria", "Idade_2"}]
     df = pd.read_parquet(caminho, columns=colunas)
-    df["Idade"] = pd.to_numeric(df["Idade"], errors="coerce")
+    df["Idade"] = pd.to_numeric(df["Idade"], errors="coerce").astype("float64")
     df["Anos_de_Estudo"] = pd.to_numeric(df["Anos_de_Estudo"], errors="coerce")
     df["Idade_2"] = df["Idade"] ** 2
     df[TARGET] = np.log(df["Salario_Hora"])
@@ -364,17 +364,18 @@ def main() -> int:
     metricas_df = pd.DataFrame(resultados)
     metricas_df.to_csv(args.saida_dir / "metricas_modelos.csv", index=False)
     teste_df = metricas_df[metricas_df["tipo"] == "teste"].sort_values("rmse_log")
-    melhor = teste_df.iloc[0].to_dict()
+    validacao_df = metricas_df[metricas_df["tipo"] == "validacao"].sort_values("rmse_log")
+    melhor = validacao_df.iloc[0].to_dict()
 
     comparacao = {
-        "melhor_modelo_por_rmse_log_teste": melhor["modelo"],
+        "melhor_modelo_por_rmse_log_validacao": melhor["modelo"],
         "metricas_melhor_modelo": melhor,
-        "criterio": "menor RMSE no log do salário-hora no teste de 2025",
+        "criterio": "menor RMSE no log do salário-hora na validação 2023–2024; teste somente para avaliação",
         "divisao_temporal": {"treino": "2013-2022", "validacao": "2023-2024", "teste": "2025"},
         "amostras": {"treino": len(treino), "validacao": len(validacao), "teste": len(teste)},
         "variavel_alvo": "log(Salario_Hora)",
         "limitacoes": [
-            "Os pesos amostrais da PNAD não estão presentes na base tratada; os resultados são não ponderados.",
+            "Este benchmark não utiliza pesos amostrais; para inferência ponderada do M5, execute 08_inferencia_m5.py.",
             "O GAM foi aproximado por splines com Ridge porque pyGAM não está instalado.",
             "As métricas usam amostras fixas para tornar a comparação reproduzível.",
         ],
@@ -402,26 +403,25 @@ def main() -> int:
             "",
             f"## Resultado",
             "",
-            f"O melhor modelo para previsão no teste de 2025 foi **{melhor['modelo']}**, pelo menor RMSE no log do salário-hora.",
+            f"O modelo selecionado foi **{melhor['modelo']}**, pelo menor RMSE no log do salário-hora na validação 2023–2024. A tabela abaixo mostra a avaliação no teste.",
             "",
             tabela_teste.to_markdown(index=False),
             "",
             "## Interpretação",
             "",
-            "- Para previsão, o Gradient Boosting apresentou o melhor desempenho entre os modelos testados.",
-            "- O Random Forest ficou próximo e pode ser uma alternativa robusta.",
-            "- O OLS com efeitos fixos tem desempenho preditivo menor, mas é mais fácil de interpretar economicamente.",
-            "- O MixedLM por coorte apresentou ajuste instável, com covariância aleatória singular e erro de previsão elevado; não deve ser escolhido nesta especificação.",
+            f"- A recomendação desta execução é {melhor['modelo']}; ela é calculada a partir da validação, não fixada no relatório.",
+            "- A execução operacional com exportação de modelo e pré-processamento está em 12_treinar_previsao.py.",
+            "- Os resultados históricos são preservados no diretório pai e não devem ser sobrescritos por novas execuções.",
             "",
             "## Limitações",
             "",
-            "- A base tratada não contém os pesos amostrais da PNAD, portanto os resultados não são ponderados para representar a população.",
+            "- Este benchmark não utiliza os pesos amostrais e não produz estimativas representativas da população; use 08_inferencia_m5.py para o M5 ponderado.",
             "- O GAM foi aproximado por splines com Ridge porque `pygam` não está instalado.",
             "- As métricas usam amostras fixas de 150 mil observações no treino e 50 mil em validação e teste.",
         ]
     )
     (args.saida_dir / "relatorio_modelos.md").write_text(relatorio, encoding="utf-8")
-    logger.info("Melhor modelo por RMSE log no teste: %s", melhor["modelo"])
+    logger.info("Modelo selecionado por RMSE log na validação: %s", melhor["modelo"])
     logger.info("Resultados salvos em: %s", args.saida_dir)
     return 0
 

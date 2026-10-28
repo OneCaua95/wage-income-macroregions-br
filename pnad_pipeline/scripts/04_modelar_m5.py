@@ -323,7 +323,7 @@ def atualizar_arquivos(
         "## M5 do notebook", "",
         "O M5 foi reproduzido com escolaridade, formalidade, setor público, sexo, dummies de setor, ocupação, cor, região e efeitos fixos de ano. A avaliação preditiva usa a mesma divisão temporal dos demais modelos. Os erros-padrão agrupados por coorte de nascimento e UF são calculados no treino.", "",
         "## Limitações", "",
-        "- A base tratada não contém pesos amostrais da PNAD; os resultados são não ponderados.",
+        "- Este benchmark não utiliza pesos amostrais; para inferência ponderada com UPA e estrato, execute 08_inferencia_m5.py.",
         "- O M5 usa amostras fixas de 150 mil observações no treino e 50 mil em validação e teste.",
         "- As faixas de nascimento do M5 foram estendidas até 2003 para cobrir a faixa etária de 25 a 65 anos em 2025.",
     ]

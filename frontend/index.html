@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore estatísticas, previsões por perfil e associações do salário-hora na PNAD Contínua.">
+  <title>PNAD · Laboratório de resultados</title>
+  <link rel="stylesheet" href="assets/dashboard.css?v=1.6">
+  <script defer src="assets/dashboard.js?v=1.6"></script>
+</head>
+<body>
+  <a class="skip" href="#conteudo">Ir para o conteúdo</a>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#visao"><span class="brand-mark" aria-hidden="true">p.</span><span>PNAD <span class="brand-light">Contínua</span><small>LABORATÓRIO DE RESULTADOS</small></span></a>
+      <div class="top-meta"><span class="live-dot" aria-hidden="true"></span> Microdados IBGE <span class="top-divider">/</span> <span>2013—2025</span></div>
+    </div>
+  </header>
+  <div class="nav-surface"><nav class="wrap tabs" aria-label="Seções do dashboard">
+    <a href="#visao" data-section="visao">Visão geral</a>
+    <a href="#descritiva" data-section="descritiva">Estatística descritiva</a>
+    <a href="#previsao" data-section="previsao">Previsão</a>
+    <a href="#associacao" data-section="associacao">Associação e inferência</a>
+    <a href="#metodologia" data-section="metodologia">Modelos e metodologia</a>
+  </nav></div>
+  <main class="wrap" id="conteudo" tabindex="-1">
+    <div class="page-heading"><div><p class="eyebrow">OBSERVATÓRIO DO TRABALHO E DA RENDA</p><h1 id="page-title">Visão geral</h1><p class="lede" id="page-description">Uma leitura dos dados, dos perfis e das diferenças no mercado de trabalho.</p></div><button class="button secondary" id="export-all" disabled>↓ Exportar recorte</button></div>
+    <section class="filter-panel" aria-label="Seleção de dados">
+      <div class="filter-top">
+        <label class="source-field">Conjunto de resultados<select id="source"><option value="real">2025T4 · execução oficial ponderada</option><option value="historico">2013–2025 · série histórica ponderada</option></select></label>
+        <label>Período<select id="period"><option>Carregando…</option></select></label>
+        <button id="toggle-filters" class="button secondary filter-toggle" aria-expanded="true" aria-controls="filter-fields">≡ Filtros <span id="filter-count">0</span></button>
+        <button id="clear-filters" class="text-button">Limpar seleção</button>
+      </div>
+      <div class="filter-fields" id="filter-fields"></div>
+      <div class="active-filters" id="active-filters" aria-label="Filtros ativos"></div>
+    </section>
+    <div class="context-line" id="context-line"></div>
+    <div id="notice" role="status" class="notice" hidden></div>
+    <div id="content" aria-live="polite" aria-busy="true"><div class="loading"><span class="spinner"></span> Lendo os resultados locais…</div></div>
+    <section class="provenance" id="provenance" aria-label="Proveniência do recorte"></section>
+  </main>
+  <footer class="wrap"><span>PNAD Contínua / IBGE <span class="muted">· Dashboard de pesquisa</span></span><span>Associações estatísticas não demonstram causalidade.</span></footer>
+  <dialog id="detail-dialog"><div class="dialog-heading"><h2 id="detail-title">Detalhes do resultado</h2><button class="button secondary" id="close-dialog" aria-label="Fechar detalhes">×</button></div><div id="detail-body"></div></dialog>
+  <noscript>Este dashboard precisa de JavaScript e da API Python local. Execute python pnad_pipeline/scripts/13_servir_dashboard.py.</noscript>
+</body>
+</html>

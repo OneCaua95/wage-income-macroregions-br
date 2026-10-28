@@ -13,6 +13,7 @@ class MockPNADExtractor:
         self.falhar_em = falhar_em
 
     def download_data(self, year: int, quarter: int, cols: list[str]) -> pd.DataFrame:
+        assert {"V1028", "Estrato", "UPA"}.issubset(cols)
         if self.falhar_em and (year, quarter) == self.falhar_em:
             raise RuntimeError(f"Erro simulado para {year}T{quarter}")
 
@@ -20,6 +21,9 @@ class MockPNADExtractor:
             "Ano": [year, year],
             "Trimestre": [quarter, quarter],
             "UF": [35, 21],  # SP, MA
+            "UPA": [350000001, 210000001],
+            "Estrato": [3500001, 2100001],
+            "V1028": [123.12345678, 234.23456789],
             "V2009": [30, 40],  # Idade
             "VD4016": [2500.0, 1800.0],  # Rendimento_hab_Trab_princ
             "V2007": [1, 2],  # Sexo
@@ -55,6 +59,8 @@ def test_processar_periodo_sucesso(df_ipca_teste: pd.DataFrame):
     # Verifica região mapeada
     assert "Regiao" in df_res.columns
     assert set(df_res["Regiao"]) == {"Sudeste", "Nordeste"}
+    assert df_res["V1028"].tolist() == [123.12345678, 234.23456789]
+    assert df_res["V1028"].dtype.name == "float64"
 
 
 def test_coletar_pnad_com_tolerancia_a_falha(df_ipca_teste: pd.DataFrame):
@@ -75,3 +81,17 @@ def test_coletar_pnad_com_tolerancia_a_falha(df_ipca_teste: pd.DataFrame):
     assert "2023T2" in erros[0]
     # 3 trimestres * 2 observações = 6
     assert len(df_consolidado) == 6
+
+
+def test_coleta_mantem_upa_fora_do_dominio(df_ipca_teste):
+    class ExtratorAmostraCompleta(MockPNADExtractor):
+        def download_data(self, year, quarter, cols):
+            df = super().download_data(year, quarter, cols)
+            df.loc[0, "V2009"] = 20
+            df.loc[0, "VD4016"] = 0.0
+            return df
+
+    df, _, _ = processar_periodo(2023, 1, df_ipca_teste, extractor=ExtratorAmostraCompleta())
+    assert len(df) == 2
+    assert 350000001 in df["UPA"].tolist()
+    assert 20 in df["Idade"].tolist()

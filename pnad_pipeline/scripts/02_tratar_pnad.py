@@ -15,6 +15,7 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent
@@ -31,6 +32,10 @@ from pnad_pipeline.analise import (
     calcular_series_trimestrais_salario_hora,
     preparar_variaveis_analise,
 )
+from pnad_pipeline.analise.amostragem import (
+    COLUNAS_DESENHO, diagnostico_representatividade, exigir_colunas_desenho,
+)
+from pnad_pipeline.extracao.io import ParquetStreamWriter
 
 logger = logging.getLogger("scripts.02_tratar_pnad")
 
@@ -38,6 +43,7 @@ COLUNAS_ANALISE = [
     "Ano",
     "Trimestre",
     "UF",
+    *COLUNAS_DESENHO,
     "Sexo",
     "Idade",
     "Cor",
@@ -77,6 +83,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--min-idade", type=int, default=25, help="Idade mínima inclusiva.")
     parser.add_argument("--max-idade", type=int, default=65, help="Idade máxima inclusiva.")
+    parser.add_argument("--batch-size", type=int, default=100_000, help="Linhas por lote de tratamento.")
     parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -93,21 +100,24 @@ def tratar_base(args: argparse.Namespace) -> Path:
     if args.min_idade > args.max_idade:
         raise ValueError("--min-idade deve ser menor ou igual a --max-idade.")
 
-    logger.info("Lendo base consolidada: %s", args.entrada)
-    df = pd.read_parquet(args.entrada, columns=COLUNAS_ANALISE)
-    logger.info("Observações carregadas: %s", f"{len(df):,}")
-
-    df_tratado = preparar_variaveis_analise(
-        df,
-        min_idade=args.min_idade,
-        max_idade=args.max_idade,
-    )
-
-    args.saida.parent.mkdir(parents=True, exist_ok=True)
-    df_tratado.to_parquet(args.saida, index=False, compression="snappy")
-    logger.info("Base analítica salva: %s (%s observações)", args.saida, f"{len(df_tratado):,}")
-    del df, df_tratado
-    gc.collect()
+    if args.entrada.resolve() == args.saida.resolve():
+        raise ValueError("Entrada e saída devem ser arquivos diferentes.")
+    if args.batch_size <= 0:
+        raise ValueError("--batch-size deve ser positivo.")
+    parquet = pq.ParquetFile(args.entrada)
+    exigir_colunas_desenho(parquet.schema_arrow.names)
+    logger.info("Lendo base consolidada em lotes: %s", args.entrada)
+    with ParquetStreamWriter(args.saida, metadata={"pnad_amostra_completa": "false"}) as writer:
+        for batch in parquet.iter_batches(columns=COLUNAS_ANALISE, batch_size=args.batch_size):
+            df_tratado = preparar_variaveis_analise(
+                batch.to_pandas(), min_idade=args.min_idade, max_idade=args.max_idade,
+            )
+            writer.append(df_tratado)
+            del df_tratado
+            gc.collect()
+        if writer.total_rows == 0:
+            raise ValueError("Nenhuma observação na faixa etária solicitada.")
+        logger.info("Base analítica salva: %s (%s observações)", args.saida, f"{writer.total_rows:,}")
     return args.saida
 
 
@@ -134,13 +144,17 @@ def gerar_tabelas(caminho_base: Path, tabelas_dir: Path) -> None:
     }
     for nome, (funcao, colunas) in tarefas.items():
         logger.info("Calculando %s a partir de %s", nome, caminho_base)
-        df_tabela = pd.read_parquet(caminho_base, columns=colunas)
+        df_tabela = pd.read_parquet(caminho_base, columns=colunas + ["V1028"])
         tabela = funcao(df_tabela)
         destino = tabelas_dir / nome
         tabela.to_csv(destino, index=False)
         logger.info("Tabela salva: %s (%s linhas)", destino, f"{len(tabela):,}")
         del df_tabela, tabela
         gc.collect()
+    desenho = pd.read_parquet(caminho_base, columns=["Ano", "Trimestre", "UF", *COLUNAS_DESENHO])
+    diagnostico_representatividade(desenho).to_csv(
+        tabelas_dir / "representatividade_trimestral.csv", index=False,
+    )
 
 
 def main() -> int:

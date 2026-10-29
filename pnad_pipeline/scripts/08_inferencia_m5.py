@@ -412,6 +412,44 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
     return pd.DataFrame(dados)
 
 
+def resultados_perfil_idade(modelo: ResultadoModelo, nivel_confianca: float) -> pd.DataFrame:
+    """Predições por idade no perfil médio ponderado, com covariância do desenho."""
+    assert modelo.xtx is not None and modelo.beta is not None
+    assert modelo.indices_ativos is not None
+    nomes = ["Intercept"] + nomes_features(modelo.ufs)
+    idade_idx = nomes.index("Idade_centrada")
+    idade2_idx = nomes.index("Idade_centrada_2")
+    ativos = set(modelo.indices_ativos.tolist())
+    if idade_idx not in ativos or idade2_idx not in ativos:
+        raise ValueError(f"Modelo {modelo.nome}: os termos de idade não são identificáveis.")
+
+    cov = covariancias(modelo)["desenho_pnad"]
+    gl = max(int(modelo.desenho.graus_liberdade), 1)
+    critico = float(stats.t.ppf((1 + nivel_confianca) / 2, df=gl))
+    perfil_medio = modelo.xtx[0, :] / modelo.xtx[0, 0]
+    linhas = []
+    for idade in range(25, 66):
+        x = perfil_medio.copy()
+        x[idade_idx] = idade - 45.0
+        x[idade2_idx] = (idade - 45.0) ** 2
+        log_previsto = float(x @ modelo.beta)
+        variancia = max(float(x @ cov @ x), 0.0)
+        erro_padrao = float(np.sqrt(variancia))
+        limite_log_inferior = log_previsto - critico * erro_padrao
+        limite_log_superior = log_previsto + critico * erro_padrao
+        linhas.append({
+            "idade": idade,
+            "log_previsto": log_previsto,
+            "erro_padrao_log": erro_padrao,
+            "salario_hora_previsto": float(np.exp(np.clip(log_previsto, -50, 50))),
+            "ic_inferior": float(np.exp(np.clip(limite_log_inferior, -50, 50))),
+            "ic_superior": float(np.exp(np.clip(limite_log_superior, -50, 50))),
+            "nivel_confianca": nivel_confianca,
+            "graus_liberdade_desenho": gl,
+        })
+    return pd.DataFrame(linhas)
+
+
 def resumo_modelo(modelo: ResultadoModelo, nivel_confianca: float) -> dict:
     assert modelo.beta is not None
     media_y = modelo.sum_y / modelo.soma_pesos
@@ -547,6 +585,8 @@ def executar(args: argparse.Namespace) -> int:
     for nome, modelo in modelos.items():
         coef = resultados_coeficientes(modelo, args.nivel_confianca)
         coef.to_csv(args.saida_dir / f"inferencial_m5_{slug(nome)}.csv", index=False)
+        perfil = resultados_perfil_idade(modelo, args.nivel_confianca)
+        perfil.to_csv(args.saida_dir / f"perfil_idade_m5_{slug(nome)}.csv", index=False)
         resumo = resumo_modelo(modelo, args.nivel_confianca)
         todos_resumos.append(resumo)
         comparacao = montar_comparacao(modelo, args.nivel_confianca)
@@ -582,6 +622,7 @@ def executar(args: argparse.Namespace) -> int:
         "aproximacao_variancia": "Conglomerado primário com reposição, sem FPC e sem recalibrar os pesos finais. UPAs recorrentes permanecem agrupadas enquanto mantêm o estrato; com upa-multiestrato=separar, cada versão (UF, estrato, UPA) é separada e a covariância entre versões não é estimada. A rotação de domicílios entre trimestres e a renovação gradual da Amostra Mestra iniciada em 2025T3 limitam a aproximação temporal.",
         "modelos": todos_resumos,
         "arquivos_coeficientes": [f"inferencial_m5_{slug(nome)}.csv" for nome in modelos],
+        "arquivos_perfil_idade": [f"perfil_idade_m5_{slug(nome)}.csv" for nome in modelos],
         "limitacao_causal": "A estimação fornece significância associativa; não prova causalidade.",
     }
     (args.saida_dir / "resumo_inferencia_m5.json").write_text(json.dumps(resumo_final, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -610,6 +651,7 @@ def executar(args: argparse.Namespace) -> int:
         "",
         "- `inferencial_m5_geral.csv`: estimação geral.",
         "- `inferencial_m5_norte.csv`, `inferencial_m5_nordeste.csv`, `inferencial_m5_sudeste.csv`, `inferencial_m5_sul.csv`, `inferencial_m5_centro_oeste.csv`: estimações por macroregião.",
+        "- `perfil_idade_m5_*.csv`: salário-hora previsto por idade no perfil médio ponderado, com IC95% pela covariância do desenho.",
         "- `comparacao_especificacoes_inferenciais.csv`: sensibilidade dos erros-padrão.",
         "- `auditoria_causalidade_m5.json`: limites para interpretação causal.",
     ]

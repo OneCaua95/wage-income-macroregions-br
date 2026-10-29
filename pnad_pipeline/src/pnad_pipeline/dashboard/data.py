@@ -22,7 +22,10 @@ HISTORICO_INFERENCE = PROCESSED / "recoleta_ponderada" / "inferencia_amostral"
 HISTORICO_EDUCATION = HISTORICO_INFERENCE / "retorno_educacao"
 HISTORICO_SELECTION = HISTORICO_INFERENCE / "selecao_ocupacional"
 HISTORICO_REGIONAL = HISTORICO_INFERENCE / "heterogeneidade_regional"
-VERSION = "dashboard-1.6"
+HISTORICO_PSEUDO = HISTORICO_INFERENCE / "pseudopainel"
+HISTORICO_INEQUALITY = HISTORICO_INFERENCE / "desigualdade"
+HISTORICO_GROUP_GAPS = HISTORICO_INFERENCE / "diferencas_grupos"
+VERSION = "dashboard-2.3"
 FILTERS = {
     "regiao": "Regiao", "uf": "UF", "sexo": "Sexo_Desc", "cor": "Cor_Desc",
     "escolaridade": "Escolaridade_Nivel", "idade": "Faixa_Etaria",
@@ -40,6 +43,10 @@ EDUCATION = dict(zip(
 UF_NAMES = dict(zip(
     [11,12,13,14,15,16,17,21,22,23,24,25,26,27,28,29,31,32,33,35,41,42,43,50,51,52,53],
     ["RO","AC","AM","RR","PA","AP","TO","MA","PI","CE","RN","PB","PE","AL","SE","BA","MG","ES","RJ","SP","PR","SC","RS","MS","MT","GO","DF"],
+))
+UF_FULL_NAMES = dict(zip(
+    [11,12,13,14,15,16,17,21,22,23,24,25,26,27,28,29,31,32,33,35,41,42,43,50,51,52,53],
+    ["Rondônia","Acre","Amazonas","Roraima","Pará","Amapá","Tocantins","Maranhão","Piauí","Ceará","Rio Grande do Norte","Paraíba","Pernambuco","Alagoas","Sergipe","Bahia","Minas Gerais","Espírito Santo","Rio de Janeiro","São Paulo","Paraná","Santa Catarina","Rio Grande do Sul","Mato Grosso do Sul","Mato Grosso","Goiás","Distrito Federal"],
 ))
 REGION_SLUGS = {"geral": "geral", "Norte": "norte", "Nordeste": "nordeste", "Sudeste": "sudeste", "Sul": "sul", "Centro-Oeste": "centro_oeste"}
 REGION_BASE_UF = {"geral":11, "Norte":11, "Nordeste":21, "Sudeste":31, "Sul":41, "Centro-Oeste":50}
@@ -255,6 +262,65 @@ def describe(source, period, filters, group="regiao"):
                             "Faixas de escolaridade representam anos de estudo, sem inferir diplomas."]})
 
 
+def uf_map(source, period, filters):
+    """Distribuição ponderada do salário-hora por UF no período e filtros escolhidos."""
+    filters = {key: value for key, value in filters.items() if key != "uf"}
+    df = filtered(source, period, filters)
+    wage = df.loc[df.Salario_Hora.notna() & df.UF.notna()]
+    weighted = "V1028" in wage.columns
+
+    def summarize(sub, code=None):
+        n = len(sub)
+        row = {
+            "uf": None if code is None else str(code),
+            "sigla": "BR" if code is None else UF_NAMES.get(int(code), str(code)),
+            "nome": "Brasil" if code is None else UF_FULL_NAMES.get(int(code), str(code)),
+            "n_salarios": n,
+            "populacao_v1028": float(sub.V1028.sum()) if weighted and n else None,
+            "mediana": None,
+            "p10": None,
+            "p90": None,
+            "p90_p10": None,
+        }
+        if n < 30:
+            return row
+        if weighted:
+            p10, median, p90 = quantis_ponderados(sub, "Salario_Hora", [.10, .50, .90])
+        else:
+            p10, median, p90 = sub.Salario_Hora.quantile([.10, .50, .90]).to_numpy()
+        row.update({
+            "mediana": float(median),
+            "p10": float(p10),
+            "p90": float(p90),
+            "p90_p10": float(p90 / p10) if p10 > 0 else None,
+        })
+        return row
+
+    national = summarize(wage)
+    rows = []
+    groups = {int(code): sub for code, sub in wage.groupby("UF", observed=True)}
+    for code, sigla in UF_NAMES.items():
+        sub = groups.get(code)
+        row = summarize(sub, code) if sub is not None else summarize(wage.iloc[0:0], code)
+        row["regiao"] = str(sub.Regiao.iloc[0]) if sub is not None and len(sub) else None
+        rows.append(row)
+    status = "ok" if national["n_salarios"] >= 30 else "insufficient" if national["n_salarios"] else "empty"
+    return clean({
+        "status": status,
+        "rows": rows,
+        "brazil": national,
+        "metrics": ["mediana", "p90_p10"],
+        "minimum_n": 30,
+        "provenance": provenance(source, period, filters),
+        "notes": [
+            "Valores agrupados por UF no período selecionado; o filtro de UF ativo não remove os demais estados do mapa.",
+            "Quantis ponderados pela V1028 quando disponível; P90/P10 é a razão entre os quantis do salário-hora real.",
+            "Estados com menos de 30 salários-hora válidos não recebem estimativa. O limite é regra de apresentação, não garantia de precisão.",
+            "A malha territorial usa limites estaduais simplificados da API de Malhas Geográficas do IBGE; nenhum microdado individual é enviado ao navegador.",
+        ],
+    })
+
+
 @lru_cache(maxsize=12)
 def series_cached(source, filter_items, stamp):
     filters = dict(filter_items)
@@ -363,6 +429,8 @@ def inference(source, period, filters):
     path = folder / f"inferencial_m5_{REGION_SLUGS[region]}.csv"
     if not path.exists():
         return {"status": "unavailable", "message": "Arquivo de inferência ainda não gerado para esta região.", "rows": []}
+    profile_path = folder / f"perfil_idade_m5_{REGION_SLUGS[region]}.csv"
+    age_profile = pd.read_csv(profile_path).to_dict("records") if profile_path.exists() else []
     summary = read_json(folder / "resumo_inferencia_m5.json")
     rows, omitted = [], []
     for r in pd.read_csv(path).to_dict("records"):
@@ -383,7 +451,7 @@ def inference(source, period, filters):
         f"UPA única: {summary.get('politica_upa_unica', 'não aplicável')}; "
         f"UPA em múltiplos estratos: {summary.get('politica_upa_multiestrato', 'não aplicável')}."
     )
-    return clean({"status":"ok", "rows":rows, "omitted":omitted, "model":model,
+    return clean({"status":"ok", "rows":rows, "omitted":omitted, "model":model, "perfil_idade":age_profile,
                   "selection":"A especificação M5 ponderada está definida como principal; a comparação disponível trata estimadores de variância, não seleção por desempenho.",
                   "variance":summary.get("aproximacao_variancia"), "provenance":{**provenance(source,periodo_resultado,filters), "resultado":file_info(path)},
                   "method":metodo})
@@ -507,6 +575,150 @@ def regional_heterogeneity(source, period, filters):
         "provenance":{**provenance(source, "2013–2025 (empilhado)", filters),
                       "resultado":file_info(education_path), "ponderacao":"V1028",
                       "desenho":"UPA dentro de estrato"},
+    })
+
+
+@lru_cache(maxsize=4)
+def _pseudo_cached(summary_stamp: int, cells_stamp: int, models_stamp: int, coefficients_stamp: int):
+    summary_path = HISTORICO_PSEUDO / "resumo_pseudopainel.json"
+    cells_path = HISTORICO_PSEUDO / "medias_coorte_trimestre.csv"
+    models_path = HISTORICO_PSEUDO / "comparacao_especificacoes.csv"
+    coefficients_path = HISTORICO_PSEUDO / "coeficientes_pseudopainel.csv"
+    summary = read_json(summary_path)
+    cells = pd.read_csv(cells_path)
+    cells = cells.loc[cells.celula_qualificada_principal.astype(bool)].copy()
+    # Combina pares de faixas de cinco anos para manter o gráfico legível.
+    cells["grupo_nascimento_plot"] = cells["faixa_nascimento_codigo"].astype(int).floordiv(2)
+    bands = cells.groupby("faixa_nascimento_codigo", sort=True).faixa_nascimento.first().to_dict()
+    plot_labels = {}
+    for group in cells.grupo_nascimento_plot.unique():
+        indexes = [i for i in bands if i // 2 == group]
+        plot_labels[group] = f"{bands[indexes[0]].split('–')[0]}–{bands[indexes[-1]].split('–')[-1]}"
+    cells["grupo_nascimento_plot"] = cells.grupo_nascimento_plot.map(plot_labels)
+    cells["wy_plot"] = cells.media_log_salario_hora * cells.w
+    cells["wsalario_plot"] = cells.media_salario_hora * cells.w
+    trajectories = cells.groupby(["Ano", "sexo", "grupo_nascimento_plot"], observed=True).agg(
+        n=("n", "sum"), peso_v1028=("w", "sum"), wy=("wy_plot", "sum"),
+        wsalario=("wsalario_plot", "sum"), n_coortes_5_anos=("coorte_id", "nunique"),
+    ).reset_index()
+    trajectories["media_log_salario_hora"] = trajectories.wy / trajectories.peso_v1028
+    trajectories["media_salario_hora"] = trajectories.wsalario / trajectories.peso_v1028
+    trajectories = trajectories.rename(columns={"Ano":"ano", "grupo_nascimento_plot":"faixa_nascimento"})
+    comparison = pd.read_csv(models_path)
+    coefficients = pd.read_csv(coefficients_path)
+    primary_n = int(summary["limiar_principal"]["n_amostral_minimo"])
+    primary_ess = int(summary["limiar_principal"]["kish_minimo"])
+    coefficients = coefficients.loc[
+        coefficients.limiar_n.eq(primary_n) & coefficients.limiar_kish.eq(primary_ess)
+    ].copy()
+    return clean({"summary":summary, "trajectories":trajectories.to_dict("records"),
+                  "comparison":comparison.to_dict("records"),
+                  "coefficients":coefficients.to_dict("records"),
+                  "provenance":{"resultado":file_info(cells_path), "ponderacao":"V1028 nas células; n efetivo de Kish como peso WLS",
+                                "versao":"Pseudo-painel exploratório pré-estimado · 2013–2025",
+                                "dominio":"Pessoas ocupadas de 25 a 65 anos com salário-hora observável"}})
+
+
+def pseudo_panel(source, period, filters):
+    """Pseudo-painel histórico; filtros globais não reestimam os modelos."""
+    if source != "historico":
+        return {"status":"unavailable", "message":"O pseudo-painel usa a série histórica ponderada de 2013–2025. Selecione essa fonte para consultar os resultados."}
+    paths = [HISTORICO_PSEUDO / name for name in (
+        "resumo_pseudopainel.json", "medias_coorte_trimestre.csv",
+        "comparacao_especificacoes.csv", "coeficientes_pseudopainel.csv",
+    )]
+    if not all(path.exists() for path in paths):
+        return {"status":"unavailable", "message":"A construção do pseudo-painel de coortes ainda não foi executada."}
+    result = _pseudo_cached(*(path.stat().st_mtime_ns for path in paths))
+    notes = ["Os filtros demográficos globais não reestimam esta análise histórica."] if filters else []
+    return {"status":"ok", **result, "notes":notes}
+
+
+@lru_cache(maxsize=4)
+def _inequality_cached(summary_stamp: int, distribution_stamp: int, lorenz_stamp: int, quantiles_stamp: int):
+    summary_path = HISTORICO_INEQUALITY / "resumo_desigualdade.json"
+    distribution_path = HISTORICO_INEQUALITY / "distribuicao_desigualdade.csv"
+    lorenz_path = HISTORICO_INEQUALITY / "curva_lorenz.csv"
+    quantiles_path = HISTORICO_INEQUALITY / "coeficientes_quantis.csv"
+    summary = read_json(summary_path)
+    distribution = pd.read_csv(distribution_path)
+    lorenz = pd.read_csv(lorenz_path)
+    quantiles = pd.read_csv(quantiles_path)
+    series = distribution.loc[
+        distribution.dimensao.eq("geral") & distribution.grupo.eq("Brasil")
+    ].sort_values("periodo")
+    return clean({
+        "summary": summary,
+        "series": series.to_dict("records"),
+        "distribution": distribution.to_dict("records"),
+        "lorenz": lorenz.to_dict("records"),
+        "quantiles": quantiles.to_dict("records"),
+        "provenance": {
+            "resultado": file_info(distribution_path),
+            "ponderacao": "V1028",
+            "desenho": "UPA dentro de estrato; aproximação com reposição",
+            "versao": "Desigualdade salarial e regressões quantílicas · série histórica 2013–2025",
+        },
+    })
+
+
+def inequality(source, period, filters):
+    """Distribuição ponderada do salário-hora e regressões quantílicas pré-estimadas."""
+    if source != "historico":
+        return {"status": "unavailable", "message": "A análise de desigualdade usa a série histórica ponderada de 2013–2025. Selecione essa fonte para consultar os resultados."}
+    paths = [HISTORICO_INEQUALITY / name for name in (
+        "resumo_desigualdade.json", "distribuicao_desigualdade.csv",
+        "curva_lorenz.csv", "coeficientes_quantis.csv",
+    )]
+    if not all(path.exists() for path in paths):
+        return {"status": "unavailable", "message": "A análise de desigualdade ainda não foi processada. Execute scripts/19_desigualdade_quantis.py na pasta pnad_pipeline."}
+    result = _inequality_cached(*(path.stat().st_mtime_ns for path in paths))
+    selected = [row for row in result["distribution"] if row["periodo"] == period]
+    curves = [row for row in result["lorenz"] if row["periodo"] == period]
+    notes = list(result["summary"].get("notas", []))
+    if filters:
+        active = ", ".join(LABELS[key].lower() for key, value in filters.items() if value)
+        if active:
+            notes.append(f"Filtros globais ativos ({active}) não reestimam o modelo quantílico nem recortam os grupos desta análise.")
+    return clean({
+        "status": "ok", "periodo_selecionado": period,
+        "summary": result["summary"], "series": result["series"],
+        "distribution": selected, "all_distribution": result["distribution"], "lorenz": curves,
+        "quantiles": result["quantiles"], "notes": notes,
+        "provenance": result["provenance"],
+    })
+
+
+@lru_cache(maxsize=4)
+def _group_gaps_cached(summary_stamp: int, results_stamp: int):
+    summary_path = HISTORICO_GROUP_GAPS / "resumo_diferencas_grupos.json"
+    results_path = HISTORICO_GROUP_GAPS / "diferencas_brutas_ajustadas.csv"
+    return read_json(summary_path), pd.read_csv(results_path)
+
+
+def group_gaps(source, period, filters):
+    """Diferenças brutas e ajustadas por sexo e cor/raça na série M5 comum."""
+    if source != "historico":
+        return {"status": "unavailable", "message": "A comparação bruta e ajustada usa a amostra M5 histórica ponderada de 2013–2025. Selecione a série histórica para consultar os resultados."}
+    summary_path = HISTORICO_GROUP_GAPS / "resumo_diferencas_grupos.json"
+    results_path = HISTORICO_GROUP_GAPS / "diferencas_brutas_ajustadas.csv"
+    if not summary_path.exists() or not results_path.exists():
+        return {"status": "unavailable", "message": "A comparação bruta e ajustada ainda não foi processada. Execute scripts/20_diferencas_grupos_salariais.py na pasta pnad_pipeline."}
+    summary, rows = _group_gaps_cached(summary_path.stat().st_mtime_ns, results_path.stat().st_mtime_ns)
+    notes = [summary.get("contraste_bruto", ""), summary.get("contraste_ajustado", ""), summary.get("variancia", ""), summary.get("interpretacao", "")]
+    if filters:
+        active = ", ".join(LABELS[key].lower() for key, value in filters.items() if value)
+        if active:
+            notes.append(f"Filtros globais ativos ({active}) não reestimam esta comparação histórica.")
+    return clean({
+        "status": "ok", "periodo": summary.get("periodo", "2013–2025 (empilhado)"),
+        "summary": {key: value for key, value in summary.items() if key != "linhas"},
+        "rows": rows.to_dict("records"), "notes": notes,
+        "provenance": {
+            "resultado": file_info(results_path), "ponderacao": "V1028",
+            "desenho": "UPA dentro de estrato; aproximação com reposição",
+            "versao": "Diferenças salariais brutas e ajustadas · M5 ponderado 2013–2025",
+        },
     })
 
 

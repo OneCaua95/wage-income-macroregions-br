@@ -194,7 +194,7 @@ Colunas constantes ou redundantes são retiradas da estimação com identificaç
 
 No empilhamento de trimestres, a mesma UPA permanece agrupada ao longo do tempo enquanto mantém o estrato. A variância é uma **aproximação com reposição**, sem correção de população finita ou recalibração dos pesos finais; não reproduz integralmente as variâncias oficiais do IBGE. Se uma UPA aparecer em mais de um estrato, a execução falha por padrão. A opção explícita `--upa-multiestrato separar` trata cada combinação `(UF, Estrato, UPA)` como uma versão de conglomerado distinta e registra a reclassificação; não estima a covariância entre as versões. A mudança da amostra mestra iniciada em 2025T3 e o esquema rotativo da PNAD também limitam a interpretação da variância empilhada. A soma dos pesos de vários trimestres representa pessoas-trimestres, não pessoas únicas; dividir todos os pesos pelo mesmo número de períodos não altera coeficientes, médias ou sua variância.
 
-Os resultados ficam em **`data/processed/recoleta_ponderada/inferencia_amostral/`** para a série completa. Os arquivos `inferencial_m5_*.csv` incluem erros-padrão, p-valores e intervalos com o sufixo `desenho_pnad`, além do ajuste Benjamini–Hochberg do método principal. O relatório e o resumo registram o domínio, o peso, a aproximação da variância e os diagnósticos. O dashboard interativo prioriza a nova base histórica ponderada e lê os resultados do M5 desse diretório após reiniciar o servidor. A ponderação não identifica causalidade.
+Os resultados ficam em **`data/processed/recoleta_ponderada/inferencia_amostral/`** para a série completa. Os arquivos `inferencial_m5_*.csv` incluem erros-padrão, p-valores e intervalos com o sufixo `desenho_pnad`, além do ajuste Benjamini–Hochberg do método principal. Os arquivos `perfil_idade_m5_*.csv` contêm a curva de salário-hora previsto para o perfil médio ponderado, com IC pontual pela covariância completa do desenho. O relatório e o resumo registram o domínio, o peso, a aproximação da variância e os diagnósticos. O dashboard interativo prioriza a nova base histórica ponderada e lê os resultados do M5 desse diretório após reiniciar o servidor. A ponderação não identifica causalidade.
 
 ### Retorno associado à escolaridade
 
@@ -245,7 +245,53 @@ python scripts/17_heterogeneidade_regional.py `
 
 O modelo conjunto deixa variar por macroregião os retornos categóricos da escolaridade e a associação da formalidade; Norte é a referência das interações. Testes Wald-F conjuntos usam a mesma covariância linearizada por UPA/estrato e os dois testes primários recebem ajuste Benjamini–Hochberg. Cinco regressões adicionais estimam todos os controles separadamente por macroregião. RMSE log e R² ponderados comparam o ajuste na própria amostra, sem interpretação como desempenho preditivo. As saídas incluem efeitos percentuais e IC95% por região, associações de formalidade, tabela de ajuste, resumo e relatório Markdown. As estimativas são condicionais entre ocupados; a variância empilhada é uma aproximação temporal, e os resultados não são causais.
 
+### Pseudo-painel por coortes
+
+O passo seguinte organiza os cortes transversais repetidos em médias de coortes fixas de sexo × faixa de nascimento, por trimestre. A faixa de nascimento preserva a codificação usada pelo M5 histórico; escolaridade, formalidade, setor público, cor/raça e região entram como médias/proporções que podem variar em cada célula. Assim, mudanças de escolaridade ou região não redefinem a coorte.
+
+```powershell
+python scripts/18_pseudopainel_coortes.py `
+  --entrada data/processed/recoleta_ponderada/pnad_consolidada_2013_2025.parquet `
+  --saida-dir data/processed/recoleta_ponderada/inferencia_amostral/pseudopainel `
+  --batch-size 100000
+```
+
+O desfecho principal é a média ponderada de log do salário-hora real, usando V1028 dentro da célula. A regressão WLS usa o efetivo de Kish como peso de precisão aproximado. São comparados efeitos fixos de coorte e trimestre; o mesmo modelo com controles de composição; e uma especificação com tendência linear diferencial por coorte, relativa à coorte de referência. A especificação principal exige pelo menos 100 registros e Kish 50 em cada célula, além de oito trimestres elegíveis por coorte. As sensibilidades usam (n, Kish) de (200, 100) e (500, 250); esses cortes são escolhas do estudo, não regras universais.
+
+Os resultados ficam em `medias_coorte_trimestre.csv`, `coeficientes_pseudopainel.csv`, `comparacao_especificacoes.csv`, `resumo_pseudopainel.json` e `relatorio_pseudopainel.md`. O dashboard lê os artefatos ao reiniciar o servidor e não reestima as especificações com filtros globais.
+
+As médias de coorte têm erro amostral e podem atenuar associações ou contaminar tendências. Os erros-padrão clusterizados por coorte e trimestre são exploratórios, têm poucos grupos de coorte e não substituem a linearização oficial da PNAD por UPA/estrato. A rotação da pesquisa também limita a covariância temporal. O pseudo-painel descreve médias de grupos; não acompanha as mesmas pessoas e não identifica retorno individual da escolaridade ou causalidade. Para a construção clássica de coortes fixas e os problemas de erro de amostragem em células pequenas, veja [Deaton (1985)](https://www.princeton.edu/~deaton/downloads/Panel_Data_from_Time_Series_of_Cross_Sections.pdf) e [Khan (2021)](https://onlinelibrary.wiley.com/doi/abs/10.1111/obes.12416).
+
+### Desigualdade salarial e regressões quantílicas
+
+```powershell
+python scripts/19_desigualdade_quantis.py `
+  --entrada data/processed/recoleta_ponderada/pnad_consolidada_2013_2025.parquet `
+  --saida-dir data/processed/recoleta_ponderada/inferencia_amostral/desigualdade `
+  --batch-size 100000 `
+  --amostra-quantis 30000
+```
+
+Percentis P10, P25, P50, P75 e P90, a razão P90/P10, Gini e pontos da curva de Lorenz são calculados com V1028 sobre todo o arquivo, por trimestre e para Brasil, macroregião, sexo e cor/raça. O domínio é o salário-hora real de pessoas ocupadas de 25 a 65 anos com renda e horas habituais positivas; os valores estão em reais de janeiro/2026. O Gini não mede renda domiciliar.
+
+As regressões quantílicas de log(salário-hora) comparam categorias de escolaridade ao código 0 e controlam idade, sexo, cor/raça, macroregião, formalidade, setor público, ano e trimestre. O ajuste inicial é ponderado por V1028 e estratificado por trimestre × macroregião; duas correções dos scores percorrem a série completa. Os intervalos usam scores por UPA dentro de estrato e uma densidade escalar aproximada, sem FPC nem recalibração dos pesos. São aproximações para esta regressão quantílica e não substituem variâncias oficiais específicas para amostras complexas. Não há interpretação causal.
+
+As saídas são `distribuicao_desigualdade.csv`, `curva_lorenz.csv`, `coeficientes_quantis.csv`, `resumo_desigualdade.json` e `relatorio_desigualdade.md`. O dashboard mostra a distribuição histórica ponderada na aba **Desigualdade salarial** e adiciona as regressões quantílicas à aba **Associação e inferência**. Os filtros demográficos globais não reestimam essas análises.
+
 Referências metodológicas: [IBGE — notas técnicas da PNAD Contínua, planejamento e medidas de precisão](https://www.ibge.gov.br/biblioteca/visualizacao/livros/liv101640.pdf), [dicionário e input trimestrais](https://ftp.ibge.gov.br/Trabalho_e_Rendimento/Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/Trimestral/Microdados/Documentacao/) e [survey — regressões ponderadas e graus de liberdade](https://r-survey.r-forge.r-project.org/pkgdown/docs/reference/svyglm.html).
+
+### Diferenças salariais brutas e ajustadas por grupos
+
+```powershell
+python scripts/20_diferencas_grupos_salariais.py `
+  --entrada data/processed/recoleta_ponderada/pnad_consolidada_2013_2025.parquet `
+  --saida-dir data/processed/recoleta_ponderada/inferencia_amostral/diferencas_grupos `
+  --batch-size 100000
+```
+
+O script usa a mesma amostra elegível, V1028 e desenho do M5 histórico. Para sexo e cor/raça, as diferenças brutas são contrastes entre médias ponderadas de log(salário-hora); as ajustadas são contrastes padronizados do M5 na distribuição comum de covariáveis. O contraste por sexo incorpora a interação com escolaridade na média ponderada de anos de estudo. Percentuais são calculados por 100 × (exp(Δ log) − 1), com intervalos de 95% por linearização UPA/estrato. Os resultados são associativos e não medem automaticamente discriminação ou causalidade.
+
+As saídas são `diferencas_brutas_ajustadas.csv`, `resumo_diferencas_grupos.json` e `relatorio_diferencas_grupos.md`. O dashboard mostra o gráfico e a tabela na aba **Associação e inferência**, após selecionar a série histórica ponderada.
 
 ## Validação real e relatório HTML
 

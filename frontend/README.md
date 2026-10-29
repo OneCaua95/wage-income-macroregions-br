@@ -43,12 +43,18 @@ permitem tentar novamente.
   quando há pesos, frequências e taxa de formalidade com denominador explícito.
 - Histograma com classe aberta para rendimentos altos, séries trimestrais,
   comparação de duas seleções e detalhes por grupo.
+- Mapa interativo por UF na visão geral, com mediana real ou razão P90/P10,
+  período e filtros selecionados, detalhes, tabela e exportação CSV. O filtro de
+  UF selecionado destaca o estado sem remover as demais unidades do mapa.
 - Tabelas com busca, ordenação, paginação e CSV com separador `;`, decimal
   brasileiro e metadados de origem; JSON exporta o recorte e a proveniência.
 - Previsão com pipeline scikit-learn completo exportado, validação dos campos,
   variáveis derivadas consistentes e métricas próprias da nova execução.
 - M5 ponderado de 2025T4 e da série histórica 2013–2025, geral ou por
   macroregião, com coeficientes, referências, IC95%, erros-padrão, p e ajuste BH.
+- Perfil de idade do salário-hora previsto pelo M5, com faixa de confiança pelo
+  desenho amostral e exportação CSV; a composição das demais variáveis fica fixa
+  no perfil médio ponderado do recorte.
 
 ## Fontes e limites operacionais
 

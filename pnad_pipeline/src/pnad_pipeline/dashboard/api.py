@@ -54,6 +54,11 @@ def describe(request: Request):
     return data.describe(*selection(request),group=request.query_params.get("grupo","regiao"))
 
 
+@app.get("/api/mapa-uf")
+def uf_map(request: Request):
+    return data.uf_map(*selection(request))
+
+
 @app.get("/api/serie")
 def series(request: Request):
     source, _, filters = selection(request)
@@ -86,6 +91,21 @@ def selection_analysis(request: Request):
 @app.get("/api/heterogeneidade-regional")
 def regional_heterogeneity(request: Request):
     return data.regional_heterogeneity(*selection(request))
+
+
+@app.get("/api/pseudopainel")
+def pseudo_panel(request: Request):
+    return data.pseudo_panel(*selection(request))
+
+
+@app.get("/api/desigualdade")
+def inequality(request: Request):
+    return data.inequality(*selection(request))
+
+
+@app.get("/api/diferencas-grupos")
+def group_gaps(request: Request):
+    return data.group_gaps(*selection(request))
 
 
 @app.get("/api/modelos")

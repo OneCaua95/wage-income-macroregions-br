@@ -198,6 +198,42 @@ acumulados/adjacentes. A visualização voltou ao padrão pooled/acumulado.
 `py_compile`, `node --check` e `git diff --check` passaram. A suíte de testes
 não foi executada nesta extensão.
 
+## Pseudo-painel por coortes · 28/10/2026
+
+A análise percorreu a série histórica ponderada completa em lotes e agregou
+9.064.317 observações elegíveis em 928 células coorte-trimestre. O critério
+principal (n ≥ 100, Kish ≥ 50 e ao menos oito trimestres por coorte) reteve
+925 células, 22 coortes de sexo × nascimento e os 52 trimestres de 2013T1 a
+2025T4. Cerca de 8,1% do peso das células qualificadas usou ano de nascimento
+aproximado por ano menos idade.
+
+Os modelos têm efeitos fixos de coorte e trimestre. O segundo adiciona médias
+de escolaridade e proporções de formalidade, setor público, cor/raça e região;
+o terceiro inclui tendências anuais diferenciais por coorte. No limiar
+principal, os R² ponderados dentro da amostra foram 0,853, 0,941 e 0,983,
+respectivamente. Isso descreve ajuste na própria amostra, não validação
+preditiva. Nos cortes (n, Kish) de (200, 100) e (500, 250), o painel reteve
+922 e 903 células; o último limiar reduziu o conjunto para 21 coortes.
+
+O painel em `/api/pseudopainel` agrega duas faixas de cinco anos na visualização
+anual, com filtro por sexo; os modelos e a tabela de tendências preservam as
+coortes de cinco anos. A rota foi consultada diretamente e retornou estado
+`ok`, 128 pontos anuais, nove comparações de modelo e 262 coeficientes. Após
+reiniciar o servidor, `/api/saude` respondeu `dashboard-1.7`. No navegador, com
+a série histórica selecionada, a seção Associação e inferência exibiu o
+gráfico, as nove comparações e as 21 tendências diferenciais; o seletor de
+sexo apareceu. A aba não registrou erros de console. Na janela móvel de
+390 px, a largura do documento permaneceu em 375 px e tabelas/gráfico mantêm
+rolagem horizontal interna.
+
+Os resultados são médias de grupos, não trajetórias individuais. WLS usa o
+efetivo de Kish como peso de precisão aproximado; ICs e p-valores usam
+clusterização em duas vias por coorte e trimestre e são exploratórios. O
+erro amostral nas médias, os poucos grupos de coorte e a rotação da PNAD
+impedem interpretar essa variância como a estimativa oficial por UPA/estrato.
+`py_compile`, `node --check` e `git diff --check` foram conferidos; a suíte
+de testes não foi executada nesta extensão.
+
 ## Limites
 
 O dashboard usa a nova série ponderada para os resumos históricos, mas mantém
@@ -206,6 +242,108 @@ do M5 está disponível para Brasil e macroregiões; outros recortes exigem
 reestimação. O retorno da escolaridade inclui comparação das formas funcional
 e heterogeneidade por sexo, cor/raça e macrorregião. A seleção inclui taxas e
 sensibilidade IPW sob covariáveis observadas; fatores não observados não são
-identificados. Ainda não há intervalos preditivos calibrados.
+identificados. O pseudo-painel descreve médias de coortes e não identifica
+trajetórias individuais. Ainda não há intervalos preditivos calibrados.
 O servidor é local e precisa ser iniciado
 conforme o README. Os microdados e artefatos continuam ignorados pelo Git.
+
+## Desigualdade salarial e regressões quantílicas · 28/10/2026
+
+A nova rota `/api/desigualdade` respondeu `ok` para a fonte histórica em 2025T4,
+com 13 grupos de distribuição, 143 pontos de Lorenz e 80 coeficientes quantílicos.
+A série cobre 52 trimestres, de 2013T1 a 2025T4, com 9.064.317 observações
+pessoa-trimestre elegíveis. Os cinco modelos quantílicos convergiram; os erros-
+padrão e intervalos foram conferidos como positivos e finitos.
+
+No navegador local, confirmei que a aba Desigualdade salarial informa quando a
+fonte 2025T4 é selecionada e carrega os percentis, o Gini, a curva de Lorenz e a
+tabela ao mudar para a série histórica ponderada. A aba Associação e inferência
+exibe as cinco estimativas da escolaridade selecionada, com erros-padrão,
+intervalos e p-valores. A rota `/api/saude` respondeu `dashboard-1.8`.
+
+A distribuição usa o arquivo completo; as regressões iniciam em amostra
+calibrada e aplicam duas correções de scores na série completa. Os intervalos
+quantílicos são aproximações de linearização por UPA/estrato com densidade
+condicional escalar, não uma variância oficial específica para regressão
+quantílica. As estimativas são associações, não efeitos causais. `py_compile`,
+`node --check` e `git diff --check` passaram. A suíte de testes não foi executada
+nesta extensão.
+
+## Diferenças salariais brutas e ajustadas · 28/10/2026
+
+A rota `/api/diferencas-grupos` respondeu `ok` para a série histórica ponderada,
+com cinco contrastes, 9.064.317 observações pessoa-trimestre e ICs de 95% por
+linearização dentro de UPA e estrato. A tela Associação e inferência mostra um
+gráfico de pontos e intervalos e uma tabela filtrável/exportável. Confirmei no
+navegador os cinco grupos e os valores retornados pela API.
+
+Para mulheres versus homens, a diferença bruta foi −8,3% e a padronizada pelo
+M5 foi −17,8%. Para pessoas pretas versus brancas, foi −33,2% bruta e −10,5%
+ajustada; para pardas versus brancas, −34,4% e −9,1%. As cinco estimativas
+ajustadas coincidem com os contrastes dos coeficientes do M5 na escolaridade
+média ponderada da amostra. A população empilhada representa pessoas-trimestre,
+não indivíduos únicos; os filtros do dashboard não reestimam estes contrastes.
+São comparações associativas, não causais.
+
+`/api/saude` respondeu `dashboard-1.9`; com a fonte histórica selecionada, a
+rota respondeu `ok` e a interface apresentou gráfico e tabela completos.
+`py_compile`, `node --check` e `git diff --check` passaram. A suíte de testes
+não foi executada nesta extensão.
+
+## Mapa interativo por UF · 28/10/2026
+
+O endpoint `/api/mapa-uf` respondeu `ok` para a execução ponderada 2025T4 e a
+série histórica ponderada. As duas fontes retornaram 27 UFs, mediana real,
+P10, P90, razão P90/P10, contagens válidas e totais V1028. Em 2025T4, a mediana
+foi R$ 13,84/h no Brasil e R$ 15,85/h em São Paulo; a razão P90/P10 foi 6,25
+no Brasil e 6,39 em São Paulo. A malha local do IBGE foi carregada com HTTP 200.
+
+Na interface, confirmei a escala de cor, a referência nacional, as estatísticas
+de UF e a tabela equivalente. Selecionar São Paulo atualizou o filtro global,
+destacou o estado e manteve as demais UFs no mapa; limpar a seleção restaurou
+a visão nacional. A API ignora apenas o filtro de UF ao montar o mapa e respeita
+os demais filtros. Estados com menos de 30 salários válidos ficam sem estimativa.
+Os quantis usam V1028 quando disponível; a população apresentada é o total
+ponderado apenas entre salários válidos. A malha é simplificada e servida como
+arquivo local, sem transmissão de microdados ao navegador.
+
+`/api/saude` respondeu `dashboard-2.1`. `py_compile`, `node --check`, validação
+do JSON da malha (27 códigos únicos) e `git diff --check` passaram. A suíte de
+testes não foi executada nesta extensão.
+
+## Correção de orientação e rótulos do mapa · 28/10/2026
+
+A inspeção visual encontrou a projeção vertical invertida: Roraima aparecia ao
+sul do Rio Grande do Sul. A geometria foi regenerada da malha oficial do IBGE
+com Norte acima do Sul. Também foram incluídas siglas das UFs e chamadas para
+separar Rio Grande do Norte, Paraíba, Pernambuco, Alagoas, Sergipe e Distrito
+Federal, cujos rótulos se sobrepunham na escala do mapa.
+
+No navegador, confirmei a orientação correta e o novo posicionamento das
+chamadas do Nordeste; o mapa continua com legenda, estatísticas por UF, seleção
+e tabela. A rota `/api/saude` respondeu `dashboard-2.2`; `py_compile`,
+`node --check`, conferência dos 27 códigos da malha e `git diff --check`
+passaram. A suíte de testes não foi executada nesta extensão.
+
+## Contorno dos estados no mapa · 28/10/2026
+
+O traço branco dos polígonos se confundia com o fundo do painel, principalmente
+no perímetro externo do país. Cada UF agora tem um contorno fino cinza-azulado;
+hover continua azul e a UF selecionada continua marinho. A atualização visual
+usa cache-busting no CSS e não altera valores ou geometria. A inspeção no
+navegador confirmou contornos visíveis nas 27 UFs e linhas-guia legíveis no
+Nordeste. `git diff --check` passou.
+
+## Perfil de idade do salário-hora · 28/10/2026
+
+O M5 agora exporta uma curva para cada fonte e macroregião, com uma linha por
+idade de 25 a 65 anos. A predição usa o perfil médio ponderado e varia apenas a
+idade; os ICs pontuais de 95% usam a covariância completa dos coeficientes,
+linearizada por UPA dentro de estrato. `exp(log previsto)` é a média geométrica
+condicional e não recebe correção de retransformação nem interpretação causal.
+
+A tela Associação e inferência mostra a curva e a faixa para a fonte e
+macroregião selecionadas; a exportação CSV inclui valores e limites. As 12
+tabelas geradas (duas fontes, Brasil e cinco macroregiões) têm 41 idades cada,
+com estimativa dentro do IC em todas as linhas. `py_compile`, `node --check`,
+`git diff --check` e validação das rotas do dashboard passaram.

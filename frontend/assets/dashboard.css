@@ -122,7 +122,8 @@
 .oaxaca-method p{margin-top:12px}
 .oaxaca-method a{font-size:12px}
 @media(max-width:520px){.oaxaca-controls label{min-width:100%;flex-basis:100%}.oaxaca-controls .badge{white-space:normal}}
-.prediction-diagnostic-summary{grid-template-columns:repeat(4,minmax(0,1fr));margin:16px 0}
+.prediction-diagnostic-summary{grid-template-columns:repeat(var(--prediction-stat-count,4),minmax(0,1fr));margin:16px 0}
+.prediction-diagnostic-summary.has-mdape{--prediction-stat-count:5}
 .prediction-error-controls{margin:18px 0 10px}
 .prediction-error-controls label{min-width:190px}
 .prediction-error-chart{overflow:auto;border-bottom:1px solid var(--line);margin:10px 0 18px}

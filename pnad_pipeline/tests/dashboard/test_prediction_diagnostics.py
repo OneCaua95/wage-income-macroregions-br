@@ -31,6 +31,8 @@ def test_metrics_in_both_scales_and_bias_direction():
     assert result["mae_salario_hora"] == pytest.approx(1.75)
     assert result["rmse_salario_hora"] == pytest.approx(np.sqrt(5.25))
     assert result["vies_salario_hora"] == pytest.approx(-1.25)
+    skewed = diagnostics.metrics(np.log([10., 10., 10.]), np.log([11., 12., 80.]), smearing_factor=1.5)
+    assert skewed["mdape_salario_hora"] == pytest.approx(.8)
     assert result["mae_log"] == pytest.approx(.75*np.log(2))
     assert result["rmse_log"] == pytest.approx(np.sqrt(.75)*np.log(2))
     assert result["vies_log"] == pytest.approx(-.25*np.log(2))
@@ -69,6 +71,7 @@ def test_ties_stay_together_and_small_group_metrics_are_suppressed():
     row = next(r for r in result["rows"] if r["grupo"] == "Grupo pequeno")
     assert row["n"] == 12 and row["status"] == "insufficient"
     assert row["mae_salario_hora"] is None and row["vies_log"] is None
+    assert row["mdape_salario_hora"] is None
 
 
 def test_wrong_period_and_different_evaluation_are_rejected():

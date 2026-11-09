@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from pnad_pipeline.dashboard import prediction
+from pnad_pipeline.dashboard import prediction, prediction_diagnostics
 from pnad_pipeline.dashboard import prediction_intervals as intervals
 from pnad_pipeline.dashboard.api import app
 
@@ -98,6 +98,24 @@ def test_group_partitions_reconstruct_overall_and_small_groups_are_suppressed():
         intervals.evaluate_intervals(data, center, .5, "2024")
 
 
+def test_coverage_uses_the_diagnostic_wage_bands_with_ties():
+    data = frame(2025, n=120)
+    data["log_salario_hora"] = np.log(np.repeat([1., 2., 20.], [32, 35, 53]))
+    center = np.full(len(data), np.log(2.))
+    report = intervals.evaluate_intervals(data, center, .5, "2025")
+    manifest = {"run_id": "test", "modelo": "fixed", "sha256": "test", "data_base": "Janeiro/2026",
+                "entrada": {}, "seed": 42}
+    diagnostic = prediction_diagnostics.build_diagnostics(data, center, manifest, verify_original=False)
+    coverage_rows = [r for r in report["rows"] if r["dimensao"] == "faixa_salarial"]
+    diagnostic_rows = [r for r in diagnostic["rows"] if r["dimensao"] == "faixa_salarial"]
+    assert len(coverage_rows) == len(diagnostic_rows) == 2
+    keys = ("grupo", "n", "limite_inferior", "limite_superior")
+    assert [[r[k] for k in keys] for r in coverage_rows] == [[r[k] for k in keys] for r in diagnostic_rows]
+    assert [r["n"] for r in coverage_rows] == [67, 53]
+    assert [r["cobertos"] for r in coverage_rows] == [35, 0]
+    assert sum(r["n"] for r in coverage_rows) == len(data)
+
+
 def test_all_stages_disjoint_and_frozen_before_later_samples(execution):
     folder, result, calls = execution
     assert [offset for offset, expression in calls] == [0, 1, 3, 4, 5, 2]
@@ -164,3 +182,36 @@ def test_api_rejects_radius_different_from_frozen_calibration(execution):
     pointer["relatorio"] = intervals.save(report, folder, "relatorio")
     (folder / "manifesto.json").write_text(json.dumps(pointer), encoding="utf-8")
     assert TestClient(app).get("/api/intervalos-previsao").status_code == 409
+
+
+def test_refresh_upgrades_previous_report_and_rejects_a_different_sample(execution, monkeypatch):
+    folder, old, _ = execution
+    (folder / "base.parquet").touch()
+    monkeypatch.setattr(intervals, "ROOT", folder)
+    pointer_path = folder / "manifesto.json"
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    old["dimensoes"] = {k: v for k, v in old["dimensoes"].items() if k != "faixa_salarial"}
+    for section in ("calibration", "test"):
+        old[section]["rows"] = [r for r in old[section]["rows"] if r["dimensao"] != "faixa_salarial"]
+    old["diagnostico"]["summary"].pop("mdape_salario_hora")
+    for row in old["diagnostico"]["rows"]:
+        row.pop("mdape_salario_hora")
+    pointer["relatorio"] = intervals.save(old, folder, "relatorio")
+    pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
+
+    def sample(path, expression, limit, seed):
+        return frame(2024 if seed == 47 else 2025, 20. if seed == 47 else 5.)
+
+    monkeypatch.setattr(prediction, "sample_frame", sample)
+    updated = intervals.refresh_evaluation(folder)
+    assert updated["diagnostico"]["summary"]["mdape_salario_hora"] == pytest.approx(3.)
+    assert "faixa_salarial" in updated["dimensoes"]
+    for key in ("run_id", "modelo_sha256", "calibracao_arquivo", "decisao_arquivo", "protocolo_arquivo", "raio_log"):
+        assert updated[key] == old[key]
+    assert updated["test"]["summary"] == old["test"]["summary"]
+
+    saved_pointer = pointer_path.read_bytes()
+    monkeypatch.setattr(prediction, "sample_frame", lambda *args: sample(*args).assign(Sexo_Desc="Mulher"))
+    with pytest.raises(ValueError, match="não reproduz a amostra"):
+        intervals.refresh_evaluation(folder)
+    assert pointer_path.read_bytes() == saved_pointer

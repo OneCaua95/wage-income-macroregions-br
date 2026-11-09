@@ -24,8 +24,10 @@ from sklearn.linear_model import LinearRegression
 from threadpoolctl import threadpool_limits
 
 from . import prediction
-from .data import PROCESSED, Unavailable, clean, file_info, read_json
-from .prediction_diagnostics import MIN_GROUP, build_diagnostics, metrics, sample_fingerprint
+from .data import PROCESSED, ROOT, Unavailable, clean, file_info, read_json
+from .prediction_diagnostics import (
+    DIMENSIONS, MIN_GROUP, build_diagnostics, check_test_metrics, metrics, observed_wage_bands, sample_fingerprint,
+)
 from .prediction_smearing import fit_factor, recommend
 
 ARTIFACT_DIR = PROCESSED / "previsao_intervalos"
@@ -94,18 +96,28 @@ def evaluate_intervals(frame, center, radius, period):
         raise ValueError("Ano da amostra incompatível com a etapa de avaliação.")
     y = frame.log_salario_hora.to_numpy(dtype=float)
     center = np.asarray(center, dtype=float)
+    summary = interval_metrics(y, center, radius)
     education = pd.cut(frame.Anos_de_Estudo, [-.001, 4, 8, 11, 16],
                        labels=["0–4 anos", "5–8 anos", "9–11 anos", "12 anos ou mais"]).astype("string").fillna("Sem informação")
     rows = []
-    for dimension, values in [("regiao", frame.Regiao), ("sexo", frame.Sexo_Desc), ("escolaridade", education)]:
-        labels = values.astype("string").fillna("Sem informação").to_numpy()
+    bins, bands = observed_wage_bands(np.exp(y))
+    groups = {"regiao": frame.Regiao, "sexo": frame.Sexo_Desc, "escolaridade": education}
+    labels_by_dimension = {name: values.astype("string").fillna("Sem informação").to_numpy()
+                           for name, values in groups.items()}
+    labels_by_dimension["faixa_salarial"] = bins
+    for dimension, labels in labels_by_dimension.items():
         for group in sorted(pd.unique(labels)):
             mask = labels == group
             result = interval_metrics(y[mask], center[mask], radius)
             enough = result["n"] >= MIN_GROUP
-            rows.append({"dimensao": dimension, "grupo": str(group), "status": "ok" if enough else "insufficient",
-                         **{k: v if enough or k == "n" else None for k, v in result.items()}})
-    return {"periodo": period, "summary": interval_metrics(y, center, radius), "rows": rows,
+            row = {"dimensao": dimension, "grupo": str(group), "status": "ok" if enough else "insufficient",
+                   **{k: v if enough or k == "n" else None for k, v in result.items()}}
+            if dimension == "faixa_salarial":
+                row.update(bands[group])
+                if not enough:
+                    row.update(limite_inferior=None, limite_superior=None)
+            rows.append(row)
+    return {"periodo": period, "summary": summary, "rows": rows,
             "amostra_sha256": sample_fingerprint(frame)}
 
 
@@ -213,7 +225,7 @@ def train_intervals(path, output=ARTIFACT_DIR, max_train=150_000, max_eval=50_00
                "modelo_sha256": manifest["sha256"], "meta": TARGET, "raio_log": radius,
                "protocolo": protocol, "protocolo_arquivo": protocol_ref, "decisao": decision, "decisao_arquivo": decision_ref,
                "calibracao": frozen, "calibracao_arquivo": calibration_ref, "calibration": calibration_result, "test": test_result,
-               "diagnostico": diagnostic, "manifesto": manifest, "dimensoes": {"regiao": "Macroregião", "sexo": "Sexo", "escolaridade": "Anos de estudo"},
+               "diagnostico": diagnostic, "manifesto": manifest, "dimensoes": DIMENSIONS,
                "minimo_grupo": MIN_GROUP, "limites": LIMITS, "referencia_metodologica": REFERENCE, "processado_em": now()}
     report_ref = save(payload, output, "relatorio")
     pointer = {"version": VERSION, "run_id": run, "sha256": manifest["sha256"], "relatorio": report_ref}
@@ -274,6 +286,54 @@ def get_intervals(folder=None):
 @lru_cache(maxsize=2)
 def load_model(folder, model_json, stamp):
     return prediction.validated_pipeline(json.loads(model_json), folder)
+
+
+def refresh_evaluation(folder=None):
+    """Acrescenta métricas às amostras registradas usando o pipeline congelado."""
+    folder = ARTIFACT_DIR if folder is None else Path(folder)
+    pointer_path = folder / "manifesto.json"
+    if not pointer_path.is_file():
+        raise Unavailable("Execute o script 24 sem --reavaliar para gerar a primeira execução.")
+    pointer_bytes = pointer_path.read_bytes()
+    report = get_intervals(folder)
+    report.pop("provenance")
+    manifest = report["manifesto"]
+    source = (ROOT / manifest["entrada"]["arquivo"]).resolve()
+    if not source.is_relative_to(ROOT.resolve()) or not source.is_file():
+        raise ValueError("Restaure a base da execução registrada no manifesto.")
+    model = prediction.validated_pipeline(manifest, folder)
+    factor = report["decisao"]["fator_aplicado"]
+    for key, year, offset in [("calibration", 2024, 5), ("test", 2025, 2)]:
+        previous = report[key]
+        frame = prediction.sample_frame(source, ds.field("Ano") == year, previous["summary"]["n"], manifest["seed"] + offset)
+        with threadpool_limits(limits=4):
+            raw = model.predict(frame)
+        center = np.clip(raw, -20, 20) + np.log(factor)
+        current = evaluate_intervals(frame, center, report["raio_log"], str(year))
+        if current["amostra_sha256"] != previous["amostra_sha256"] or any(
+            not np.isclose(current["summary"][name], value, rtol=1e-9, atol=1e-10)
+            for name, value in previous["summary"].items()
+        ):
+            raise ValueError(f"A reavaliação não reproduz a amostra ou os resultados registrados de {year}.")
+        report[key] = current
+        if key == "test":
+            diagnostic = build_diagnostics(frame, raw, manifest, smearing_factor=factor, verify_original=False)
+            check_test_metrics(diagnostic["summary"], manifest)
+            diagnostic.update(limitacoes=report["diagnostico"]["limitacoes"], conversao=report["decisao"]["conversao"])
+            report["diagnostico"] = diagnostic
+            manifest["metricas_teste"] = diagnostic["summary"]
+    report.update(dimensoes=DIMENSIONS, processado_em=now())
+    pointer = json.loads(pointer_bytes)
+    pointer["relatorio"] = save(report, folder, "relatorio")
+    temp = folder / f"manifesto_{pointer['relatorio']['sha256']}.tmp"
+    temp.write_text(json.dumps(pointer, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        if pointer_path.read_bytes() != pointer_bytes:
+            raise ValueError("A execução mudou durante a reavaliação. Execute novamente.")
+        os.replace(temp, pointer_path)
+    finally:
+        temp.unlink(missing_ok=True)
+    return report
 
 
 def predict_interval(profile):

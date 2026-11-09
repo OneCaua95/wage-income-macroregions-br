@@ -249,10 +249,12 @@ Para regenerar o relatório, siga a seção de validação real no [README do pi
 A aba **Previsão** usa a nova execução de `previsao_intervalos` quando disponível.
 O formulário apresenta a estimativa e os dois limites do mesmo modelo e da mesma
 conversão. O painel seguinte mostra cobertura e largura em 2024 (calibração) e
-2025 (teste retrospectivo), por macrorregião, sexo e escolaridade. A execução
-anterior de Duan permanece recolhida como histórico, com identidade própria.
+2025 (teste retrospectivo), por macrorregião, sexo, escolaridade e faixa de
+salário-hora observado. A execução anterior de Duan aparece como histórico,
+com identidade própria.
 
 Geração local: `python pnad_pipeline/scripts/24_intervalos_previsao.py`.
+Para atualizar um relatório já gerado, acrescente `--reavaliar`.
 O modelo é ajustado até 2021 e selecionado em 2022. O fator de Duan é estimado em
 2023T1–T2 e a conversão escolhida em 2023T3–T4. A faixa é calibrada em 2024,
 com meta de 90%, antes de ler a amostra de teste de 2025.
@@ -263,8 +265,14 @@ Nordeste: 88,87%; escolaridade de 0–4 anos: 88,27%. A meta geral não assegura
 cobertura em todos os grupos. O teste já foi inspecionado em trabalhos anteriores;
 mudança temporal e rotação da PNAD impedem afirmar a garantia de permutabilidade.
 
+Nos decis salariais do teste, a cobertura foi de 64,38% no primeiro e 74,62%
+no último. Os decis usam o salário observado de cada período e mantêm os
+empates juntos. O painel de erros inclui o MdAPE geral e por grupo. A mediana
+do erro absoluto em relação ao salário observado foi de 38,07% no teste.
+
 Exportações: JSON do perfil inclui limites, largura, modelo e hashes de decisão,
 calibração e protocolo; CSV da cobertura contém geral e todos os grupos dos dois
-períodos (24 linhas), contagens, larguras, meta, raio e identificação da execução.
+períodos (44 linhas nesta execução), contagens, larguras, meta, raio e
+identificação da execução. O CSV de erros traz o MdAPE como proporção.
 Grupos com menos de 30 registros têm suas métricas suprimidas. Valores não
 ponderados a preços de janeiro/2026. A faixa não é IC de média ou coeficientes.

@@ -469,10 +469,18 @@ O serviço verifica SHA-256, execução e correspondência entre protocolo, deci
 calibração e relatório; o pipeline também é verificado antes de uso. O ponteiro
 `manifesto.json` é trocado atomicamente só ao concluir todas as etapas.
 
-Cobertura inclusiva e larguras média/mediana/P90 são relatadas no geral, por
-região, sexo e escolaridade em calibração e teste; grupos com n<30 mostram
-apenas n. Nenhum microdado é publicado. Referência:
-[Angelopoulos e Bates](https://arxiv.org/abs/2107.07511).
+O relatório mostra cobertura inclusiva e larguras média, mediana e P90 na
+calibração e no teste. Os recortes são região, sexo, escolaridade e decis do
+salário-hora observado. Grupos com menos de 30 registros exibem a contagem.
+O método segue [Angelopoulos e Bates](https://arxiv.org/abs/2107.07511).
+
+Use `python pnad_pipeline/scripts/24_intervalos_previsao.py --reavaliar` para
+atualizar o relatório existente com o modelo, a conversão e o raio registrados.
+O script exige as mesmas amostras de 2024 e 2025 e confere as métricas já
+publicadas antes de trocar o relatório. Os decis de cada período mantêm
+salários empatados juntos e os diagnósticos e a cobertura usam os mesmos
+limites no teste. O MdAPE é `mediana(abs(previsto - observado) / observado)`
+em salários reais positivos, armazenado como proporção e exibido em porcentagem.
 
 Execução `20261108T132604904108Z`: GradientBoosting_folhas31; Duan 1,2101498;
 raio 1,0482523; calibração 90,002%; teste 90,736%; largura média R$47,5324/h.

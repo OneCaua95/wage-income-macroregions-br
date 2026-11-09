@@ -55,6 +55,11 @@ permitem tentar novamente.
 - Perfil de idade do salário-hora previsto pelo M5, com faixa de confiança pelo
   desenho amostral e exportação CSV; a composição das demais variáveis fica fixa
   no perfil médio ponderado do recorte.
+- Decomposição Oaxaca–Blinder por sexo e cor/raça na série histórica, com
+  parcelas total, explicada e não explicada em log, IC95% e exportações CSV/JSON.
+- Diagnóstico da previsão no teste de 2025: MAE, RMSE, viés e contagens por
+  macroregião, sexo, escolaridade e decis de salário observado, em reais ou log.
+  Gráfico observado/previsto usa médias de faixas quantis e tem tabela equivalente.
 
 ## Fontes e limites operacionais
 
@@ -110,6 +115,20 @@ comparação de ajuste ponderado dentro da amostra. A comparação de ajuste nã
 validação fora da amostra; os coeficientes são associações condicionais e não
 causais. O painel usa os dados históricos 2013–2025 e não reestima por filtros.
 
+**Decomposição Oaxaca–Blinder:** `data/processed/recoleta_ponderada/inferencia_amostral/oaxaca/`.
+Cinco pares usam a amostra elegível do M5: mulheres/homens e cada grupo de
+cor/raça contra branca. O ajuste de referência é pooled em cada par, com
+indicador de grupo. A variável que define o par e sua interação não entram
+na parcela de características; os demais controles seguem a família M5.
+Diferença total, explicada e não explicada somam em log. Somente o total
+também é apresentado em percentual; percentuais das parcelas não seriam aditivos.
+Os ICs pontuais incorporam a variação conjunta de médias e coeficientes por
+UPA/estrato, com os mesmos limites temporais do M5. A parcela não explicada
+depende da referência e dos controles e não mede automaticamente discriminação.
+Formalidade, setor e ocupação podem mediar as diferenças, por isso a parcela
+explicada também não é uma atribuição causal. O seletor interno escolhe o par;
+período e filtros globais não reestimam esta análise fixa de 2013–2025.
+
 **Execução oficial 2025T4:** `validacao_real/2025T4/pnad_analise_2025T4.parquet`.
 Usa V1028 para descritivas populacionais. V1028, Estrato e UPA são preservados.
 O M5 usa os resultados do pipeline com cadastro completo de UPAs anterior à
@@ -126,14 +145,60 @@ em lotes é uniforme, por prioridades aleatórias, com semente 42. A nova amostr
 difere do benchmark histórico e as métricas não são misturadas. O manifesto
 registra origem, amostras, parâmetros (no pipeline), versões e SHA-256.
 
-A previsão retorna `exp(predição em log)`, uma aproximação da média geométrica
-condicional, sem correção de retransformação. O formulário informa o ano do
-perfil, até 2025; anos ausentes do treino são ignorados pelo OneHotEncoder,
+A conversão original retorna `exp(predição em log)`, uma aproximação da média
+geométrica condicional. Quando a correção de Duan é aprovada pelo protocolo
+de validação abaixo, o valor principal usa o fator global para aproximar a
+média em reais, e o formulário mostra também o valor original. O ano do
+perfil vai até 2025; anos ausentes do treino são ignorados pelo OneHotEncoder,
 como na avaliação. Não existem projeções futuras nem intervalos de previsão
 validados. Escolaridade é VD3005: código 0 inclui menos de um ano e 16 inclui
 16 anos ou mais. Os rótulos das faixas mostram anos de estudo, sem inferir
 diplomas. Valores nominais não foram preservados na base analítica; todos os
 rendimentos apresentados são reais, a preços de janeiro/2026.
+
+**Diagnóstico preditivo:** a aba Previsão lê os agregados vinculados ao mesmo
+modelo e à mesma amostra de teste de 2025 (50 mil registros na execução atual).
+Para gerar a avaliação de um modelo já exportado:
+
+```powershell
+python pnad_pipeline/scripts/22_diagnosticos_previsao.py
+```
+
+Novos treinos pelo script 12 geram esses diagnósticos automaticamente. O script
+22 reconstrói apenas o teste com a origem e a semente do manifesto e exige que
+as seis métricas originais sejam reproduzidas. O modelo salvo mantém seu
+identificador e hash. O diagnóstico recebe hash próprio e impressão da amostra;
+a API rejeita arquivos incompatíveis ou alterados.
+
+Viés = previsto − observado; negativo indica subestimação. Cada agrupamento
+particiona a mesma amostra. Decis são definidos pelo salário observado, com
+empates juntos e limites repetidos unidos. Grupos com menos de 30 registros
+mostram somente a contagem. O gráfico observado/previsto contém médias de até
+100 faixas, com ao menos 30 registros cada; os eixos são logarítmicos, rotulados
+em R$/h. Não há pontos individuais. CSV exporta métricas e metadados, e o JSON
+geral inclui o diagnóstico quando a aba Previsão está aberta. Período, fonte,
+filtros descritivos e formulário de perfil não reestimam essa avaliação fixa.
+
+**Correção de Duan:** execute `python pnad_pipeline/scripts/23_avaliar_duan.py`.
+O script reproduz a validação original, usa as 24.416 observações de 2023 para
+calcular `média(exp(resíduo log))` e compara as conversões nas 25.584 observações
+de 2024. A recomendação exige RMSE em reais menor e viés absoluto não maior;
+MAE e erros por grupo também são divulgados. A decisão e seu hash são gravados
+antes da leitura da amostra de teste de 2025.
+
+Nesta execução, o fator foi 1,21226216 e Duan foi recomendado. No teste de
+2025, RMSE caiu de R$ 26,25/h para R$ 25,65/h e o viés foi de −R$ 4,63/h para
+−R$ 1,32/h, enquanto MAE aumentou de R$ 9,52/h para R$ 9,98/h. O painel exibe
+essa troca, a comparação por grupo em 2024/2025 e o seletor de conversão para
+os diagnósticos. Mudar o seletor de diagnóstico não altera o perfil preenchido
+nem a recomendação aplicada à estimativa principal. CSV e JSON identificam a
+conversão, o fator e a decisão. Novos modelos exigem nova execução do script 23.
+
+O fator é global e pode deixar viés por grupo; aproximar a média em reais exige
+transportabilidade dos resíduos. A avaliação é retrospectiva, condicionada ao
+pipeline já escolhido: 2023–2024 já participaram da seleção do modelo e 2025
+já teve seus diagnósticos inspecionados. A correção não equivale a uma nova
+avaliação independente, inferência causal ou intervalo de previsão.
 
 O ranking preserva o histórico exploratório selecionado pelo teste. M5 do
 script 04 e M5 hierárquico do script 06 têm filtros de elegibilidade distintos
@@ -179,3 +244,27 @@ Abra [dashboard_salario_hora.html](dashboard_salario_hora.html) para visualizar 
 Abra [resultados_testes_reais.html](resultados_testes_reais.html). O arquivo é autônomo e reúne inferência ponderada em microdados oficiais de 2025T4, resultados históricos anteriores não ponderados, verificações sobre dados reais e o relatório dos testes automatizados. Permite selecionar macroregiões, filtrar coeficientes e exportar CSV/JSON.
 
 Para regenerar o relatório, siga a seção de validação real no [README do pipeline](../pnad_pipeline/README.md). A referência visual e as decisões de apresentação estão em [referencias_relatorio_testes.md](referencias_relatorio_testes.md).
+# Intervalos de previsão com meta de 90%
+
+A aba **Previsão** usa a nova execução de `previsao_intervalos` quando disponível.
+O formulário apresenta a estimativa e os dois limites do mesmo modelo e da mesma
+conversão. O painel seguinte mostra cobertura e largura em 2024 (calibração) e
+2025 (teste retrospectivo), por macrorregião, sexo e escolaridade. A execução
+anterior de Duan permanece recolhida como histórico, com identidade própria.
+
+Geração local: `python pnad_pipeline/scripts/24_intervalos_previsao.py`.
+O modelo é ajustado até 2021 e selecionado em 2022. O fator de Duan é estimado em
+2023T1–T2 e a conversão escolhida em 2023T3–T4. A faixa é calibrada em 2024,
+com meta de 90%, antes de ler a amostra de teste de 2025.
+
+Resultados da execução `20261108T132604904108Z`: 45.368 dos 50.000 salários do
+teste dentro da faixa (90,736%); largura média R$ 47,53/h, mediana R$ 36,98/h.
+Nordeste: 88,87%; escolaridade de 0–4 anos: 88,27%. A meta geral não assegura
+cobertura em todos os grupos. O teste já foi inspecionado em trabalhos anteriores;
+mudança temporal e rotação da PNAD impedem afirmar a garantia de permutabilidade.
+
+Exportações: JSON do perfil inclui limites, largura, modelo e hashes de decisão,
+calibração e protocolo; CSV da cobertura contém geral e todos os grupos dos dois
+períodos (24 linhas), contagens, larguras, meta, raio e identificação da execução.
+Grupos com menos de 30 registros têm suas métricas suprimidas. Valores não
+ponderados a preços de janeiro/2026. A faixa não é IC de média ou coeficientes.

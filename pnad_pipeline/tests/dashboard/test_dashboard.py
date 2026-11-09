@@ -86,7 +86,9 @@ def test_comparison_uses_a_as_denominator(monkeypatch):
     assert r["diferenca_percentual"] == 50
 
 
-def test_inference_rejects_unestimated_domains():
+def test_inference_rejects_unestimated_domains(tmp_path, monkeypatch):
+    # A ausência de artefato é uma condição da fixture, não do checkout local.
+    monkeypatch.setattr(data, "HISTORICO_INFERENCE", tmp_path)
     assert data.inference("real","2025T4",{"sexo":"Mulher"})["status"] == "unavailable"
     assert data.inference("historico","2025T4",{})["status"] == "unavailable"
     assert data.inference("real","2024T1",{})["status"] == "unavailable"
@@ -107,6 +109,9 @@ def test_age_square_does_not_overflow_in_training(tmp_path):
     assert all((f.Idade_2 == 1600).all() for f in frames.values())
     _,second=prediction.sample_temporal(path,100,100,42)
     for split in frames:pd.testing.assert_frame_equal(frames[split],second[split])
+    _,reserved=prediction.sample_temporal(path,100,100,42,splits={"teste"})
+    assert set(reserved) == {"teste"}
+    pd.testing.assert_frame_equal(frames["teste"],reserved["teste"])
 
 
 def test_api_error_and_missing_artifact(local_data,monkeypatch,tmp_path):

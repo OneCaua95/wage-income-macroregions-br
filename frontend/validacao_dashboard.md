@@ -347,3 +347,146 @@ macroregião selecionadas; a exportação CSV inclui valores e limites. As 12
 tabelas geradas (duas fontes, Brasil e cinco macroregiões) têm 41 idades cada,
 com estimativa dentro do IC em todas as linhas. `py_compile`, `node --check`,
 `git diff --check` e validação das rotas do dashboard passaram.
+
+## Decomposição Oaxaca–Blinder · 08/11/2026
+
+Executado `21_decomposicao_oaxaca.py` sobre a série histórica completa, com
+9.064.317 observações elegíveis, 52 trimestres, 46.034 UPAs e 827 estratos.
+Cinco comparações (sexo e quatro contrastes de cor/raça) produziram 15 parcelas.
+Referência pooled com indicador de grupo; controles da família M5 excluem a
+variável que define o par e sua interação dos controles comuns. As parcelas
+são aditivas em log e a diferença é grupo menos referência.
+
+Os scores incluem a variação conjunta das médias dos grupos e dos coeficientes.
+ICs pontuais usam linearização UPA/estrato com 45.207 graus de liberdade,
+políticas `ajustar` e `separar`, sem FPC ou recalibração. Permanecem os limites
+da rotação e da reclassificação de UPAs na série empilhada.
+
+As diferenças totais coincidiram com as diferenças brutas publicadas pelo
+script 20. Todas as estimativas ficaram dentro dos ICs; a matriz conjunta de
+covariância é simétrica e sem autovalores negativos além da tolerância numérica.
+Em mulheres versus homens, o total foi −0,08678 log (−8,3%), a parcela explicada
+0,11516 log e a não explicada −0,20195 log. Em pardas versus brancas, foram
+−0,42195, −0,32879 e −0,09316 log. Percentuais das parcelas não são somados.
+
+Três novos testes numéricos verificam a linearização contra perturbações dos
+pesos, invariância à escala e à troca de grupos, e a covariância por UPA. Dois
+testes de API verificam a fonte, a ausência de processamento e a proveniência
+sem atribuir filtros descritivos ao resultado. A revisão direcionada totalizou
+34 testes aprovados entre inferência, desenho e dashboard. Um teste antigo de
+artefato ausente foi isolado dos arquivos reais do checkout.
+
+A API `/api/oaxaca` respondeu `ok`, com cinco comparações e 15 linhas, e a saúde
+respondeu `dashboard-2.4`. No navegador, a execução 2025T4 informou a fonte
+necessária; a série histórica exibiu as parcelas, ICs e tabela. A troca para
+pardas versus brancas atualizou os valores, e o CSV baixado teve 15 linhas,
+cinco comparações e metadados de 2013–2025 com filtros vazios. O console não
+registrou erros. A interface informa que a parcela não explicada não mede
+automaticamente discriminação; controles ocupacionais podem mediar diferenças.
+
+## Diagnóstico dos erros de previsão por grupo · 08/11/2026
+
+O script 22 reconstruiu apenas os 50.000 registros do teste de 2025, com a
+mesma base e semente do manifesto operacional. MAE, RMSE e R² em log e reais
+reproduziram as seis métricas originais. O identificador da execução
+`20261016T153847212121Z` e o SHA-256 do pipeline foram preservados; o diagnóstico
+recebeu hash próprio e impressão da amostra. Novos treinos do script 12 geram
+os mesmos agregados diretamente a partir das previsões de teste.
+
+Foram gerados 21 grupos (cinco regiões, dois sexos, quatro faixas de estudo e
+dez faixas de salário observado). Cada dimensão soma 50.000 registros. Empates
+salariais permanecem juntos; os decis não precisam conter exatamente 5.000
+registros. O observado/previsto usa médias de 100 faixas com ao menos 30
+registros, sem pontos individuais no navegador. As métricas são não ponderadas
+e os rendimentos estão em R$/hora a preços de janeiro/2026.
+
+No teste completo, MAE = R$ 9,5240/h, RMSE = R$ 26,2537/h e viés (previsto menos
+observado) = −R$ 4,6280/h. A média observada foi R$ 20,1968/h e a prevista
+R$ 15,5688/h. Os erros em log foram 0,45285, 0,61869 e −0,05133,
+respectivamente. São diagnósticos da execução `exp(log previsto)` sem smearing;
+não representam projeção futura, estimativa populacional ou intervalo preditivo.
+
+Os 19 testes do dashboard passaram. Sete novos testes verificam as fórmulas
+em duas escalas, sinal do viés, soma das contagens, reconstrução das métricas
+gerais pelos grupos, empates, supressão de grupos pequenos, rejeição de outra
+amostra/período, integridade e vínculo do artefato. O teste da amostragem também
+confirma que reconstruir somente o teste mantém exatamente as mesmas linhas.
+
+A API `/api/diagnostico-previsao` respondeu `ok` e a saúde `dashboard-2.5`.
+No navegador, os seletores exibiram cinco regiões, dois sexos, quatro faixas
+educacionais e dez faixas salariais; a mudança entre reais, log, MAE e viés
+atualizou gráfico e tabela. A previsão do formulário continuou respondendo.
+O CSV baixado contém 21 linhas e o JSON geral inclui os 50.000 registros
+agregados em 21 grupos e 100 pontos. Período de avaliação e filtros vazios
+da proveniência estão preservados. Nenhum erro foi registrado no console.
+
+## Correção global de Duan · 08/11/2026
+
+O script 23 reproduziu as seis métricas da validação original de 50.000
+observações. A calibração usa somente as 24.416 observações de 2023 e resultou
+em fator global 1,2122621582270718. A decisão usa as 25.584 observações de 2024
+e exige RMSE em reais menor e viés absoluto não maior. O registro com hash foi
+persistido antes da reconstrução do teste de 2025; não houve ajuste do fator
+ou da decisão a partir dessa comparação posterior.
+
+| Período | Conversão | MAE R$/h | RMSE R$/h | Viés R$/h |
+| --- | --- | ---: | ---: | ---: |
+| 2024 | Original | 9,38592 | 28,45996 | −4,18655 |
+| 2024 | Duan | 9,97325 | 27,97503 | −0,94112 |
+| 2025 | Original | 9,52401 | 26,25369 | −4,62801 |
+| 2025 | Duan | 9,98125 | 25,64825 | −1,32334 |
+
+Duan foi recomendado pelo critério de 2024. A piora de MAE e das métricas em
+log é divulgada junto à melhora de RMSE e viés em reais. A versão original
+aproxima a média geométrica; Duan busca aproximar a média em reais mediante
+transportabilidade dos resíduos. O modelo base já utilizou 2023–2024 na seleção
+e o teste de 2025 já havia sido inspecionado: a avaliação é retrospectiva,
+condicionada ao pipeline fixo, e não representa uma nova avaliação independente.
+
+Os 27 testes do dashboard passaram. As oito novas verificações cobrem a
+fórmula da média de exp(resíduo), a regra de escolha, o fator aplicado após a
+conversão numérica da base, a rejeição de períodos futuros, o registro da
+decisão antes do acesso ao teste, a integridade do arquivo e as duas condições
+de adoção no formulário. Um teste força piora em 2025 e confirma que a decisão
+de 2024 não se altera.
+
+A API `/api/duan` respondeu `ok`; `/api/previsao` usa a recomendação e retorna
+ambos os valores. No perfil padrão, original = R$ 14,69201/h e Duan =
+R$ 17,81056/h, com o segundo como estimativa principal. A saúde respondeu
+`dashboard-2.6`. O pipeline mantém o identificador e hash originais.
+
+No navegador, a tabela mostrou as quatro avaliações e a comparação por sexo
+no teste de 2025. Alternar original/Duan atualizou os diagnósticos sem apagar
+a idade 41 preenchida no formulário. O CSV completo teve 84 linhas (21 grupos
+× duas conversões × dois períodos), com fator, hash da decisão, hash da amostra
+e filtros vazios. O JSON incluiu o diagnóstico da conversão selecionada e o
+relatório completo da decisão. O console não registrou erros.
+# Validação dos intervalos de previsão · 08/11/2026
+
+- Execução separada `20261108T132604904108Z`, modelo
+  `GradientBoosting_folhas31`, SHA-256
+  `06fe4b2d7a1dd096e995c53393818cca6e76284d07e9fd199d4d3842195f872e`.
+- Treino 150 mil; cinco etapas posteriores com 50 mil registros cada. Ajuste
+  até 2021, seleção 2022, fator/conversão nas duas metades de 2023, calibração
+  2024, teste retrospectivo 2025. Decisão e raio persistidos antes das etapas
+  seguintes, com hashes verificáveis.
+- Calibração: escore de ordem 45.001, raio log 1,0482523315, cobertura 90,002%.
+  Teste: 45.368 dentro, 2.935 abaixo e 1.697 acima; cobertura 90,736%; largura
+  média R$47,5324/h, mediana R$36,9823/h, P90 R$89,6717/h.
+- Os 11 grupos de cada período particionam cada dimensão; contagens por
+  dimensão somam 50 mil. Cobertura abaixo da meta no Nordeste (88,87%) e em
+  escolaridade 0–4 anos (88,27%), divulgada sem retuning no teste.
+- Testes verificam quantil por ordem exata, empates, inclusão das bordas,
+  larguras em reais, recomposição por grupo e supressão n<30. Execução sintética
+  faz a cobertura do teste cair a zero e confirma que raio/conversão permanecem
+  os escolhidos antes. API testa identidade, etapas alteradas, pipeline corrompido,
+  domínio do perfil e correspondência entre ponto, intervalo e hashes.
+- A execução anterior e seu serviço continuam disponíveis. O formulário e os
+  diagnósticos principais usam a nova execução quando o relatório está disponível.
+- Verificação no navegador: perfil com 41 anos preservado após trocar período e
+  dimensão. Estimativa R$18,4583/h, faixa R$6,4705–52,6552/h; JSON baixado e lido,
+  confirmando que ponto, limites e manifesto usam a mesma execução. CSV baixado e
+  lido: 24 linhas (geral + 11 grupos, em dois períodos), hashes presentes em todas.
+- 39 testes de dashboard aprovados ao longo das verificações (27 anteriores e
+  12 específicos dos intervalos); sintaxe JavaScript e compilação Python verificadas.
+  A API rejeita também raio divergente da calibração congelada.

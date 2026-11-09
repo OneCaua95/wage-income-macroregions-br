@@ -25,7 +25,8 @@ HISTORICO_REGIONAL = HISTORICO_INFERENCE / "heterogeneidade_regional"
 HISTORICO_PSEUDO = HISTORICO_INFERENCE / "pseudopainel"
 HISTORICO_INEQUALITY = HISTORICO_INFERENCE / "desigualdade"
 HISTORICO_GROUP_GAPS = HISTORICO_INFERENCE / "diferencas_grupos"
-VERSION = "dashboard-2.3"
+HISTORICO_OAXACA = HISTORICO_INFERENCE / "oaxaca"
+VERSION = "dashboard-2.7"
 FILTERS = {
     "regiao": "Regiao", "uf": "UF", "sexo": "Sexo_Desc", "cor": "Cor_Desc",
     "escolaridade": "Escolaridade_Nivel", "idade": "Faixa_Etaria",
@@ -719,6 +720,33 @@ def group_gaps(source, period, filters):
             "desenho": "UPA dentro de estrato; aproximação com reposição",
             "versao": "Diferenças salariais brutas e ajustadas · M5 ponderado 2013–2025",
         },
+    })
+
+
+@lru_cache(maxsize=4)
+def _oaxaca_cached(summary_stamp: int, results_stamp: int):
+    return read_json(HISTORICO_OAXACA / "resumo_oaxaca.json"), pd.read_csv(HISTORICO_OAXACA / "decomposicao_oaxaca.csv")
+
+
+def oaxaca(source, period, filters):
+    """Decomposição fixa na série histórica; filtros descritivos não reestimam."""
+    if source != "historico":
+        return {"status": "unavailable", "message": "A decomposição Oaxaca–Blinder usa a série histórica ponderada de 2013–2025. Selecione esse conjunto de resultados."}
+    summary_path = HISTORICO_OAXACA / "resumo_oaxaca.json"
+    results_path = HISTORICO_OAXACA / "decomposicao_oaxaca.csv"
+    if not summary_path.exists() or not results_path.exists():
+        return {"status": "unavailable", "message": "Decomposição ainda não processada. Execute scripts/21_decomposicao_oaxaca.py na pasta pnad_pipeline."}
+    summary, rows = _oaxaca_cached(summary_path.stat().st_mtime_ns, results_path.stat().st_mtime_ns)
+    return clean({
+        "status": "ok", "periodo": summary["periodo"], "summary": summary,
+        "rows": rows.to_dict("records"),
+        "notes": [summary.get("variancia", ""), summary.get("interpretacao", ""),
+                  "O período e os filtros globais não reestimam esta análise; a comparação é escolhida dentro do painel."],
+        "provenance": {"conjunto": "Oaxaca–Blinder · série histórica ponderada", "periodo": summary["periodo"],
+                       "ponderacao": "V1028", "desenho": "UPA dentro de estrato; linearização conjunta das médias e coeficientes",
+                       "versao": summary.get("versao"), "processado_em": summary.get("processado_em"),
+                       "resultado": file_info(results_path), "filtros": {},
+                       "filtros_globais_nao_aplicados": filters, "periodo_global_nao_aplicado": period},
     })
 
 

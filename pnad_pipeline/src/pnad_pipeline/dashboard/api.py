@@ -12,6 +12,9 @@ from pydantic import BaseModel
 
 from . import data
 from .prediction import predict
+from .prediction_diagnostics import get_diagnostics
+from .prediction_smearing import get_smearing
+from .prediction_intervals import get_intervals, predict_interval
 from .runtime import WORKSPACE_ID
 
 app = FastAPI(title="PNAD · Laboratório de resultados", version=data.VERSION)
@@ -113,6 +116,11 @@ def models():
     return data.models()
 
 
+@app.get("/api/oaxaca")
+def oaxaca(request: Request):
+    return data.oaxaca(*selection(request))
+
+
 class Profile(BaseModel):
     perfil: dict
 
@@ -125,6 +133,26 @@ def prediction(body: Profile):
 @app.get("/api/saude")
 def health():
     return {"status":"ok","version":data.VERSION,"workspace":WORKSPACE_ID,"pid":os.getpid()}
+
+
+@app.get("/api/diagnostico-previsao")
+def prediction_diagnostics():
+    return get_diagnostics()
+
+
+@app.get("/api/duan")
+def smearing_comparison():
+    return get_smearing()
+
+
+@app.get("/api/intervalos-previsao")
+def prediction_interval_report():
+    return get_intervals()
+
+
+@app.post("/api/previsao-intervalos")
+def prediction_interval(body: Profile):
+    return predict_interval(body.perfil)
 
 
 app.mount("/", StaticFiles(directory=data.ROOT / "frontend",html=True),name="frontend")

@@ -293,6 +293,122 @@ O script usa a mesma amostra elegível, V1028 e desenho do M5 histórico. Para s
 
 As saídas são `diferencas_brutas_ajustadas.csv`, `resumo_diferencas_grupos.json` e `relatorio_diferencas_grupos.md`. O dashboard mostra o gráfico e a tabela na aba **Associação e inferência**, após selecionar a série histórica ponderada.
 
+### Decomposição Oaxaca–Blinder ponderada
+
+```powershell
+python scripts/21_decomposicao_oaxaca.py `
+  --entrada data/processed/recoleta_ponderada/pnad_consolidada_2013_2025.parquet `
+  --saida-dir data/processed/recoleta_ponderada/inferencia_amostral/oaxaca `
+  --batch-size 100000 `
+  --upa-unica ajustar `
+  --upa-multiestrato separar
+```
+
+Usa todas as observações elegíveis do M5 histórico com V1028 para cinco pares:
+mulheres versus homens, e pessoas pretas, amarelas, pardas e indígenas versus
+brancas. Para cada par, estima a referência pooled com indicador de grupo,
+conforme [Jann (2008)](https://repec.ethz.ch/ets/papers/jann_oaxaca.pdf).
+O vetor de controles comuns mantém a família M5, retirando a variável definidora
+do par e sua interação com escolaridade. O indicador entra somente no ajuste
+pooled. A diferença é sempre grupo menos referência.
+
+O total D é a diferença entre médias ponderadas de log do salário-hora;
+a parcela explicada E é a diferença de médias dos controles multiplicada
+pelos coeficientes pooled; a parcela não explicada é U = D − E. Os componentes
+somam em log. A transformação percentual é apresentada apenas para o total,
+pois percentuais exponenciados dos componentes não somam. Os ICs pontuais
+usam scores conjuntos de médias e coeficientes, agregados por UPA/estrato,
+preservando a covariância entre as parcelas. Cadastro completo de UPAs,
+políticas explícitas e limites da variância temporal seguem o M5.
+
+Saídas: `decomposicao_oaxaca.csv`, `covariancia_oaxaca.npz` (com a ordem dos
+componentes), `resumo_oaxaca.json` e `relatorio_oaxaca.md`. O dashboard lê a
+análise em `/api/oaxaca` e a exibe em **Associação e inferência**, com seletor
+de comparação, gráfico, tabela, CSV e inclusão na exportação JSON. O resultado
+é fixo na série 2013–2025; filtros globais e período não reestimam os modelos.
+
+A parcela não explicada inclui fatores não observados e depende dos controles
+e da referência; não representa automaticamente discriminação ou causalidade.
+Formalidade, setor e ocupação podem mediar diferenças. A parcela explicada
+também é estatística, sem atribuição causal às características. Não se reporta
+uma fração explicada quando o total é próximo de zero.
+
+### Diagnósticos da previsão por grupo
+
+```powershell
+python scripts/22_diagnosticos_previsao.py
+```
+
+O script usa `previsao_perfis/manifesto.json` e o pipeline operacional já
+exportado. Reconstrói somente o teste de 2025 com a semente original (o fluxo
+aleatório preserva o índice do conjunto), confere o tamanho da base e exige
+igualdade numérica com MAE, RMSE e R² em log e em reais do manifesto. Não há
+novo ajuste ou seleção do modelo. O script 12 também exporta os diagnósticos
+em novos treinos, a partir das mesmas previsões usadas nas métricas de teste.
+
+O arquivo `diagnostico_<run>_<hash>.json` contém métricas gerais e por região,
+sexo, faixas de anos de estudo e decis do salário observado. Viés é a média
+de previsto menos observado. Limites dos decis são fechados à direita e empates
+permanecem juntos; limites repetidos são unidos. Grupos com menos de 30
+registros têm métricas suprimidas, preservando as contagens. Os pontos do
+gráfico são médias de até 100 faixas quantis, com pelo menos 30 registros;
+os microdados não são publicados pela API.
+
+O manifesto recebe a referência e o SHA-256 do diagnóstico, e o arquivo registra
+o identificador/hash do modelo e a impressão da amostra ordenada. A API
+`/api/diagnostico-previsao` valida essa correspondência. A aba **Previsão**
+exibe erros por grupo, seletor de métrica/escala, observado versus previsto,
+tabelas e CSV. A exportação JSON do recorte inclui o diagnóstico carregado.
+
+São resultados descritivos não ponderados na amostra reservada de 2025, com
+salário-hora a preços de janeiro/2026. A conversão original prevê `exp(log previsto)`
+sem smearing; a extensão abaixo avalia também a conversão corrigida. Diferenças de
+erro entre grupos também dependem de suas distribuições salariais. Os
+diagnósticos não identificam causalidade, não calibram intervalos de previsão
+e não validam projeções futuras. Filtros populacionais não alteram essa avaliação.
+
+### Correção global de Duan e comparação temporal
+
+```powershell
+python scripts/23_avaliar_duan.py
+```
+
+O pipeline já exportado é mantido fixo. O script reproduz as seis métricas da
+validação original 2023–2024 e separa suas 50.000 observações por ano. Em 2023,
+calcula `S = média(exp(log observado − log da conversão base))`; a conversão
+corrigida é `exp(log previsto) × S`. A conversão base mantém o limite numérico
+do serviço em `[-20, 20]` no log; o fator é aplicado após essa conversão, sem
+truncar resíduos ou ajustar limites usando resultados de teste.
+
+Critério pré-fixado: recomendar Duan se o RMSE em reais diminuir e o viés
+absoluto não aumentar em 2024. MAE, erros em log e resultados por grupo são
+diagnósticos. A decisão é persistida em `decisao_duan_<run>_<hash>.json` antes
+de reconstruir a amostra de teste de 2025. O relatório posterior fica em
+`comparacao_duan_<run>_<hash>.json`; o manifesto recebe seu caminho e hash.
+O relatório inclui as duas conversões nos dois períodos, por grupo e em
+faixas de observado/previsto, com as mesmas contagens e impressões de amostra.
+
+A API `/api/duan` verifica o vínculo com o pipeline e o hash do registro
+congelado. `/api/previsao` aplica a recomendação da validação ao campo
+`salario_hora` e retorna também `salario_hora_original`, `salario_hora_duan`,
+`fator_duan`, `retransformacao` e o hash da decisão. As métricas de teste do
+resultado acompanham a conversão usada; as originais são preservadas em campo
+separado. A interface mostra as duas estimativas, a comparação geral e por
+grupos, permite alternar os diagnósticos e exporta CSV/JSON com proveniência.
+
+Nesta execução: 24.416 registros em 2023, 25.584 em 2024 e 50.000 no teste de
+2025. O fator foi 1,21226216 e passou pelo critério de 2024. A conversão melhora
+RMSE e viés em reais, mas piora MAE e métricas em log; os dois alvos e essa
+troca são apresentados explicitamente. O pipeline base, seu identificador e
+hash não mudam. Novos treinos do script 12 precisam de nova avaliação pelo 23.
+
+O fator global pressupõe transportabilidade da distribuição dos resíduos e
+pode falhar em grupos com heterogeneidade. Esta é uma análise retrospectiva:
+o modelo base já foi selecionado com 2023–2024 e os diagnósticos de 2025 já
+foram inspecionados. Não representa uma nova avaliação independente, previsão
+futura ou intervalo preditivo. Referência:
+[Duan (1983), Smearing Estimate](https://www.tandfonline.com/doi/abs/10.1080/01621459.1983.10478017).
+
 ## Validação real e relatório HTML
 
 Para reproduzir a validação sobre uma onda oficial de 2025T4, executar a suíte do código e incorporar as evidências no HTML, a partir de `pnad_pipeline/`:
@@ -323,3 +439,44 @@ Para rodar os testes unitários isolados com dados sintéticos:
 ```bash
 pytest
 ```
+# Intervalos de previsão · execução temporal separada
+
+```powershell
+python pnad_pipeline/scripts/24_intervalos_previsao.py
+```
+
+Usa `data/processed/pnad_analise_25_65.parquet`, sem ponderação, e salva em
+`data/processed/previsao_intervalos/`, preservando os artefatos preditivos anteriores.
+Parâmetros: `--entrada`, `--artefatos-dir`, `--max-treino` (150.000),
+`--max-avaliacao` (50.000 por etapa) e `--seed` (42).
+
+Protocolo persistido antes da execução: treino 2013–2021; seleção por RMSE log em
+2022, entre duas configurações de Gradient Boosting, Random Forest e OLS; fator
+global de Duan em 2023T1–T2; escolha da conversão por RMSE e viés absoluto em
+2023T3–T4. Modelo e conversão são congelados antes de ler 2024. Não há refit.
+
+Split conformal com escore absoluto em log em 2024: `k=ceil((n+1)*0.90)`;
+raio é a k-ésima estatística de ordem, sem interpolação. Centro é
+`clip(log previsto,-20,20)+log(fator aplicado)`; limites são `exp(centro ± raio)`.
+O raio e seu hash são gravados antes de ler 2025. O teste usa semente 44,
+preservando as mesmas 50 mil linhas da avaliação anterior; não ajusta nenhuma
+decisão. Demais etapas usam sementes 42, 43, 45, 46 e 47, respectivamente.
+
+`GET /api/intervalos-previsao` entrega relatório agregado e manifesto da nova
+execução. `POST /api/previsao-intervalos` usa o mesmo esquema e derivação de
+variáveis do serviço anterior, mas carrega exclusivamente seu próprio pipeline.
+O serviço verifica SHA-256, execução e correspondência entre protocolo, decisão,
+calibração e relatório; o pipeline também é verificado antes de uso. O ponteiro
+`manifesto.json` é trocado atomicamente só ao concluir todas as etapas.
+
+Cobertura inclusiva e larguras média/mediana/P90 são relatadas no geral, por
+região, sexo e escolaridade em calibração e teste; grupos com n<30 mostram
+apenas n. Nenhum microdado é publicado. Referência:
+[Angelopoulos e Bates](https://arxiv.org/abs/2107.07511).
+
+Execução `20261108T132604904108Z`: GradientBoosting_folhas31; Duan 1,2101498;
+raio 1,0482523; calibração 90,002%; teste 90,736%; largura média R$47,5324/h.
+A cobertura depende de hipóteses de permutabilidade não asseguradas por dados
+temporais com rotação. Esta é avaliação retrospectiva, pois 2025 já foi visto
+em extensões anteriores, sem garantia prospectiva, populacional ou por grupo.
+Não confundir faixa individual com IC de médias/coeficientes.

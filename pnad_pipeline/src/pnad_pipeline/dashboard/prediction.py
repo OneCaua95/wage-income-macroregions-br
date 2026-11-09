@@ -46,43 +46,66 @@ def legacy_module():
     return module
 
 
-def sample_temporal(path: Path, max_train=150_000, max_eval=50_000, seed=42):
+def sample_frame(path, expression, limit, seed):
+    """Amostra uma etapa explicitamente filtrada, sem ler etapas posteriores."""
+    legacy = legacy_module()
+    columns = [c for c in legacy.MODEL_COLUMNS if c not in {"Faixa_Etaria", "Idade_2"}]
+    rng = np.random.default_rng(seed)
+    kept = pd.DataFrame()
+    for batch in ds.dataset(path).scanner(columns=columns, filter=expression, batch_size=65536).to_batches():
+        df = batch.to_pandas()
+        df = df.loc[np.isfinite(df.Salario_Hora) & df.Salario_Hora.gt(0) & df.Idade.between(25,65)].copy()
+        df["_priority"] = rng.random(len(df))
+        kept = pd.concat([kept, df], ignore_index=True)
+        if len(kept) > limit:
+            indices = np.argpartition(kept._priority.to_numpy(), limit-1)[:limit]
+            kept = kept.iloc[indices].copy()
+    if len(kept) < 100:
+        raise ValueError(f"Amostra insuficiente: {len(kept)} registros.")
+    kept = kept.sort_values("_priority").drop(columns="_priority").reset_index(drop=True)
+    # O Parquet usa int8: converter antes de elevar evita overflow da idade.
+    kept["Idade"] = kept.Idade.astype("float64")
+    kept["Anos_de_Estudo"] = kept.Anos_de_Estudo.astype("float64")
+    kept["Idade_2"] = kept.Idade ** 2
+    kept[legacy.TARGET] = np.log(kept.Salario_Hora)
+    for col in legacy.BASE_CATEGORICAL + legacy.FIXED_EFFECTS:
+        kept[col] = kept[col].astype("string").fillna("Sem informação")
+    return kept
+
+
+def sample_temporal(path: Path, max_train=150_000, max_eval=50_000, seed=42, *, splits=None):
     """Amostra uniforme por prioridades aleatórias, em lotes, com semente fixa.
 
     Não reproduz as linhas do antigo pandas.sample: é uma nova execução,
     explicitamente separada do ranking histórico.
     """
     legacy = legacy_module()
-    columns = [c for c in legacy.MODEL_COLUMNS if c not in {"Faixa_Etaria", "Idade_2"}]
     frames = {}
     specs = [("treino", ds.field("Ano") <= 2022, max_train),
              ("validacao", (ds.field("Ano") >= 2023) & (ds.field("Ano") <= 2024), max_eval),
              ("teste", ds.field("Ano") == 2025, max_eval)]
-    dataset = ds.dataset(path)
     for i, (split, expr, limit) in enumerate(specs):
-        rng = np.random.default_rng(seed+i)
-        kept = pd.DataFrame()
-        for batch in dataset.scanner(columns=columns, filter=expr, batch_size=65536).to_batches():
-            df = batch.to_pandas()
-            df = df.loc[np.isfinite(df.Salario_Hora) & df.Salario_Hora.gt(0) & df.Idade.between(25,65)].copy()
-            df["_priority"] = rng.random(len(df))
-            kept = pd.concat([kept, df], ignore_index=True)
-            if len(kept) > limit:
-                indices = np.argpartition(kept._priority.to_numpy(), limit-1)[:limit]
-                kept = kept.iloc[indices].copy()
-        if len(kept) < 100:
-            raise ValueError(f"Amostra insuficiente no conjunto {split}: {len(kept)} registros.")
-        kept = kept.sort_values("_priority").drop(columns="_priority").reset_index(drop=True)
-        # O Parquet compacto armazena idade como int8; elevar antes da conversão
-        # causa overflow (40² vira 64). Treino e serviço usam float64.
-        kept["Idade"] = kept.Idade.astype("float64")
-        kept["Anos_de_Estudo"] = kept.Anos_de_Estudo.astype("float64")
-        kept["Idade_2"] = kept.Idade ** 2
-        kept[legacy.TARGET] = np.log(kept.Salario_Hora)
-        for col in legacy.BASE_CATEGORICAL + legacy.FIXED_EFFECTS:
-            kept[col] = kept[col].astype("string").fillna("Sem informação")
-        frames[split] = kept
+        if splits is not None and split not in splits:
+            continue
+        frames[split] = sample_frame(path, expr, limit, seed+i)
     return legacy, frames
+
+
+def input_schema(frame):
+    schema = []
+    for name in INPUT_LABELS:
+        if name in ("Idade", "Anos_de_Estudo"):
+            schema.append({"name":name,"label":INPUT_LABELS[name],"type":"number","min":25 if name=="Idade" else 0,"max":65 if name=="Idade" else 16})
+        else:
+            vals = sorted(frame[name].dropna().astype(str).unique(),key=str)
+            if name == "Ano":
+                vals = [str(y) for y in range(2013,2026)]
+            opts = [{"value":v,"label": UF_NAMES.get(int(v),v) if name=="UF" and v.isdigit() else
+                     CATEGORY_LABELS.get(v,v)+f" (cód. {v})" if name=="Categoria_emprego" else
+                     ACTIVITY_LABELS.get(v,v)+f" (cód. {v})" if name=="Grupo_atv_princ_empreedimento" else
+                     {"1":"Sim","2":"Não"}.get(v,v) if name=="Contribuicao_previdencia" else v} for v in vals]
+            schema.append({"name":name,"label":INPUT_LABELS[name],"type":"select","options":opts})
+    return schema
 
 
 def train(path, output=ARTIFACT_DIR, max_train=150_000, max_eval=50_000, seed=42):
@@ -105,25 +128,14 @@ def train(path, output=ARTIFACT_DIR, max_train=150_000, max_eval=50_000, seed=42
             validation.extend(legacy.avaliar_sklearn(name, model, data["treino"], {"validacao":data["validacao"]}))
         leader = min(validation, key=lambda r:r["rmse_log"])
         best = candidates[leader["modelo"]]
-        test = legacy.metricas(leader["modelo"], "teste", data["teste"][legacy.TARGET], best.predict(data["teste"]))
+        test_predictions = best.predict(data["teste"])
+        test = legacy.metricas(leader["modelo"], "teste", data["teste"][legacy.TARGET], test_predictions)
     output.mkdir(parents=True, exist_ok=True)
     # Arquivos por execução; manifesto trocado por último, de forma atômica.
     run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     artifact = output / f"pipeline_{run}.joblib"
     joblib.dump(best, artifact)
-    schema = []
-    for name in INPUT_LABELS:
-        if name in ("Idade", "Anos_de_Estudo"):
-            schema.append({"name":name,"label":INPUT_LABELS[name],"type":"number","min":25 if name=="Idade" else 0,"max":65 if name=="Idade" else 16})
-        else:
-            vals = sorted(data["treino"][name].dropna().astype(str).unique(),key=str)
-            if name == "Ano":
-                vals = [str(y) for y in range(2013,2026)]
-            opts = [{"value":v,"label": UF_NAMES.get(int(v),v) if name=="UF" and v.isdigit() else
-                     CATEGORY_LABELS.get(v,v)+f" (cód. {v})" if name=="Categoria_emprego" else
-                     ACTIVITY_LABELS.get(v,v)+f" (cód. {v})" if name=="Grupo_atv_princ_empreedimento" else
-                     {"1":"Sim","2":"Não"}.get(v,v) if name=="Contribuicao_previdencia" else v} for v in vals]
-            schema.append({"name":name,"label":INPUT_LABELS[name],"type":"select","options":opts})
+    schema = input_schema(data["treino"])
     manifest = clean({"version":"previsao-perfis-1.0", "run_id":run, "modelo":leader["modelo"],
                       "criterio":"Menor RMSE log na validação temporal 2023–2024; teste reservado ao vencedor",
                       "divisao_temporal":{"treino":"2013–2022","validacao":"2023–2024","teste":"2025"},
@@ -138,6 +150,8 @@ def train(path, output=ARTIFACT_DIR, max_train=150_000, max_eval=50_000, seed=42
                       "intervalo":"Indisponível: nenhum procedimento de intervalo de previsão foi validado.",
                       "limitacoes":["Efeitos fixos de anos 2023–2025 são categorias não vistas no treino; o OneHotEncoder os ignora, como na avaliação temporal.",
                                     "Recortes descritivos não reestimam este modelo global.", "Modelo não ponderado; previsão associativa para perfis do domínio de ocupados de 25 a 65 anos."]})
+    from .prediction_diagnostics import build_diagnostics, save_diagnostics
+    manifest["diagnostico"] = save_diagnostics(build_diagnostics(data["teste"], test_predictions, manifest), output)
     temp = output / f"manifesto_{run}.tmp"
     temp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     os.replace(temp, output / "manifesto.json")
@@ -148,9 +162,16 @@ def train(path, output=ARTIFACT_DIR, max_train=150_000, max_eval=50_000, seed=42
 @lru_cache(maxsize=2)
 def load_pipeline(manifest_stamp, artifact_stamp):
     manifest = read_json(ARTIFACT_DIR / "manifesto.json")
-    path = ARTIFACT_DIR / manifest["arquivo"]
-    if path.parent.resolve() != ARTIFACT_DIR.resolve() or path.suffix != ".joblib":
+    return validated_pipeline(manifest, ARTIFACT_DIR)
+
+
+def validated_pipeline(manifest, folder):
+    folder = Path(folder)
+    path = folder / manifest["arquivo"]
+    if path.parent.resolve() != folder.resolve() or path.suffix != ".joblib":
         raise Unavailable("Caminho do artefato inválido no manifesto.")
+    if not path.is_file():
+        raise Unavailable("Pipeline não encontrado. Reexporte o modelo.")
     if hashlib.sha256(path.read_bytes()).hexdigest() != manifest.get("sha256"):
         raise Unavailable("O artefato não corresponde ao SHA-256 do manifesto. Reexporte o modelo.")
     if manifest.get("sklearn") != sklearn.__version__:
@@ -159,11 +180,7 @@ def load_pipeline(manifest_stamp, artifact_stamp):
     return joblib.load(path)
 
 
-def predict(profile: dict):
-    mpath = ARTIFACT_DIR / "manifesto.json"
-    manifest = read_json(mpath)
-    if not manifest:
-        raise Unavailable("Modelo treinado ausente. Execute python pnad_pipeline/scripts/12_treinar_previsao.py.")
+def prepare_profile(profile, manifest):
     values = {}
     for field in manifest["schema"]:
         name = field["name"]
@@ -185,15 +202,37 @@ def predict(profile: dict):
     values["Setor"] = "Público" if category in (5,6,7) else "Privado"
     values["Formalidade"] = "Formal" if category in (1,3,5,7) or category in (8,9) and contrib == "1" else "Informal"
     values["Regiao"] = REGION_UF[int(values["UF"])]
+    return values
+
+
+def predict(profile: dict):
+    mpath = ARTIFACT_DIR / "manifesto.json"
+    manifest = read_json(mpath)
+    if not manifest:
+        raise Unavailable("Modelo treinado ausente. Execute python pnad_pipeline/scripts/12_treinar_previsao.py.")
+    values = prepare_profile(profile, manifest)
     path = ARTIFACT_DIR / manifest["arquivo"]
     if not path.exists():
         raise Unavailable("Pipeline não encontrado. Reexporte o modelo.")
     pipeline = load_pipeline(mpath.stat().st_mtime_ns,path.stat().st_mtime_ns)
     with threadpool_limits(limits=4):
         log_value = float(pipeline.predict(pd.DataFrame([values]))[0])
-    return clean({"salario_hora":np.exp(np.clip(log_value,-20,20)),"previsao_log":log_value,
+    from .prediction_smearing import get_smearing
+    smearing = get_smearing(manifest, ARTIFACT_DIR)
+    available = smearing.get("status") == "ok"
+    factor = float(smearing["decisao"]["calibracao"]["fator"]) if available else None
+    accepted = bool(available and smearing["decisao"]["adotar_duan"])
+    original = float(np.exp(np.clip(log_value, -20, 20)))
+    corrected = original * factor if available else None
+    interpretation = ("Conversão com fator global de Duan: aproximação da média em reais, calibrada em 2023 e escolhida pela validação de 2024."
+                      if accepted else manifest["interpretacao"])
+    return clean({"salario_hora":corrected if accepted else original,"previsao_log":log_value,
+                  "salario_hora_original": original, "salario_hora_duan": corrected, "fator_duan": factor,
+                  "retransformacao": "duan" if accepted else "original", "duan_disponivel": available,
+                  "decisao_duan_sha256": smearing["decisao_arquivo"]["sha256"] if available else None,
                   "modelo":manifest["modelo"], "run_id":manifest["run_id"], "perfil":values,
-                  "metricas_teste":manifest["metricas_teste"], "interpretacao":manifest["interpretacao"],
+                  "metricas_teste":smearing["test"]["duan"]["summary"] if accepted else manifest["metricas_teste"], "interpretacao":interpretation,
+                  "metricas_teste_original": manifest["metricas_teste"],
                   "intervalo":manifest["intervalo"], "divisao_temporal":manifest["divisao_temporal"],
                   "ponderacao":manifest["ponderacao"], "data_base":manifest["data_base"],
                   "aviso_ano":manifest["limitacoes"][0] if int(values["Ano"]) > 2022 else None})

@@ -249,10 +249,12 @@ Para regenerar o relatório, siga a seção de validação real no [README do pi
 A aba **Previsão** usa a nova execução de `previsao_intervalos` quando disponível.
 O formulário apresenta a estimativa e os dois limites do mesmo modelo e da mesma
 conversão. O painel seguinte mostra cobertura e largura em 2024 (calibração) e
-2025 (teste retrospectivo), por macrorregião, sexo e escolaridade. A execução
-anterior de Duan permanece recolhida como histórico, com identidade própria.
+2025 (teste retrospectivo), por macrorregião, sexo, escolaridade e faixa de
+salário-hora observado. A execução anterior de Duan aparece como histórico,
+com identidade própria.
 
 Geração local: `python pnad_pipeline/scripts/24_intervalos_previsao.py`.
+Para atualizar um relatório já gerado, acrescente `--reavaliar`.
 O modelo é ajustado até 2021 e selecionado em 2022. O fator de Duan é estimado em
 2023T1–T2 e a conversão escolhida em 2023T3–T4. A faixa é calibrada em 2024,
 com meta de 90%, antes de ler a amostra de teste de 2025.
@@ -263,8 +265,39 @@ Nordeste: 88,87%; escolaridade de 0–4 anos: 88,27%. A meta geral não assegura
 cobertura em todos os grupos. O teste já foi inspecionado em trabalhos anteriores;
 mudança temporal e rotação da PNAD impedem afirmar a garantia de permutabilidade.
 
+Nos decis salariais do teste, a cobertura foi de 64,38% no primeiro e 74,62%
+no último. Os decis usam o salário observado de cada período e mantêm os
+empates juntos. O painel de erros inclui o MdAPE geral e por grupo. A mediana
+do erro absoluto em relação ao salário observado foi de 38,07% no teste.
+
 Exportações: JSON do perfil inclui limites, largura, modelo e hashes de decisão,
 calibração e protocolo; CSV da cobertura contém geral e todos os grupos dos dois
-períodos (24 linhas), contagens, larguras, meta, raio e identificação da execução.
+períodos (44 linhas nesta execução), contagens, larguras, meta, raio e
+identificação da execução. O CSV de erros traz o MdAPE como proporção.
 Grupos com menos de 30 registros têm suas métricas suprimidas. Valores não
 ponderados a preços de janeiro/2026. A faixa não é IC de média ou coeficientes.
+
+## Comparação de intervalos adaptativos
+
+O formulário da aba **Previsão** usa a faixa atual. O painel
+**Comparação de faixas de previsão** reúne as versões experimentais do CQR.
+O seletor mostra a referência de 2025 e os testes de 2026T1 e 2026T2.
+A tabela detalha os decis do salário observado. O CSV completo inclui os
+hashes de modelo, amostra e calibração.
+
+Gere o relatório com `python pnad_pipeline/scripts/25_comparar_intervalos.py`.
+No teste de 2026T1, a faixa adaptativa teve cobertura de 90,48% e largura
+média de R$ 40,47/h. Na faixa atual, os valores foram 90,86% e R$ 48,40/h.
+A cobertura no primeiro decil subiu de 66,51% para 77,71%. No último decil,
+caiu de 72,89% para 68,05%.
+
+Use `python pnad_pipeline/scripts/25_comparar_intervalos.py --por-cauda` para
+acrescentar a comparação de 2026T2. O painel mostra três métodos nesse período.
+A tabela permite alternar entre cobertura, largura e contagens de salários
+abaixo ou acima dos limites. O CSV completo tem 77 linhas nesta execução.
+
+Em 2026T2, os ajustes separados reduziram as saídas acima do limite no último
+decil de 1.631 para 1.535 em relação ao ajuste único. A cobertura nesse decil
+passou de 67,21% para 69,14%. A faixa atual cobriu 72,01%. Esse resultado
+favoreceu a faixa atual como padrão, dada a prioridade à cobertura no decil
+superior.

@@ -26,7 +26,7 @@ HISTORICO_PSEUDO = HISTORICO_INFERENCE / "pseudopainel"
 HISTORICO_INEQUALITY = HISTORICO_INFERENCE / "desigualdade"
 HISTORICO_GROUP_GAPS = HISTORICO_INFERENCE / "diferencas_grupos"
 HISTORICO_OAXACA = HISTORICO_INFERENCE / "oaxaca"
-VERSION = "dashboard-2.7"
+VERSION = "dashboard-2.9"
 FILTERS = {
     "regiao": "Regiao", "uf": "UF", "sexo": "Sexo_Desc", "cor": "Cor_Desc",
     "escolaridade": "Escolaridade_Nivel", "idade": "Faixa_Etaria",

@@ -469,10 +469,18 @@ O serviço verifica SHA-256, execução e correspondência entre protocolo, deci
 calibração e relatório; o pipeline também é verificado antes de uso. O ponteiro
 `manifesto.json` é trocado atomicamente só ao concluir todas as etapas.
 
-Cobertura inclusiva e larguras média/mediana/P90 são relatadas no geral, por
-região, sexo e escolaridade em calibração e teste; grupos com n<30 mostram
-apenas n. Nenhum microdado é publicado. Referência:
-[Angelopoulos e Bates](https://arxiv.org/abs/2107.07511).
+O relatório mostra cobertura inclusiva e larguras média, mediana e P90 na
+calibração e no teste. Os recortes são região, sexo, escolaridade e decis do
+salário-hora observado. Grupos com menos de 30 registros exibem a contagem.
+O método segue [Angelopoulos e Bates](https://arxiv.org/abs/2107.07511).
+
+Use `python pnad_pipeline/scripts/24_intervalos_previsao.py --reavaliar` para
+atualizar o relatório existente com o modelo, a conversão e o raio registrados.
+O script exige as mesmas amostras de 2024 e 2025 e confere as métricas já
+publicadas antes de trocar o relatório. Os decis de cada período mantêm
+salários empatados juntos e os diagnósticos e a cobertura usam os mesmos
+limites no teste. O MdAPE é `mediana(abs(previsto - observado) / observado)`
+em salários reais positivos, armazenado como proporção e exibido em porcentagem.
 
 Execução `20261108T132604904108Z`: GradientBoosting_folhas31; Duan 1,2101498;
 raio 1,0482523; calibração 90,002%; teste 90,736%; largura média R$47,5324/h.
@@ -480,3 +488,82 @@ A cobertura depende de hipóteses de permutabilidade não asseguradas por dados
 temporais com rotação. Esta é avaliação retrospectiva, pois 2025 já foi visto
 em extensões anteriores, sem garantia prospectiva, populacional ou por grupo.
 Não confundir faixa individual com IC de médias/coeficientes.
+
+## Comparação de intervalos com regressão quantílica conformal
+
+Execute os comandos desta seção a partir da raiz do repositório. A comparação
+requer a base histórica `pnad_pipeline/data/processed/pnad_analise_25_65.parquet`
+e a referência em `pnad_pipeline/data/processed/previsao_intervalos/`. Para
+gerar a referência, execute `python pnad_pipeline/scripts/24_intervalos_previsao.py`.
+
+```powershell
+python pnad_pipeline/scripts/25_comparar_intervalos.py
+```
+
+O script usa o pipeline e a calibração registrados em `previsao_intervalos`
+como referência. Os dois Gradient Boostings da faixa adaptativa estimam P5 e
+P95 do log do salário-hora na amostra de treino de 2013–2021. A amostra de
+2024 fornece o ajuste conformal com o escore `max(P5 − y, y − P95)` depois de
+ordenar os limites. O ajuste é o escore de ordem `ceil((n+1)*0.90)`. Se uma
+contração inverter os limites, a faixa vira o ponto médio. O protocolo,
+os modelos e o ajuste são gravados antes de ler as amostras de avaliação.
+[Romano, Patterson e Candès](https://arxiv.org/abs/1905.03222).
+
+Cada método usa os mesmos 50 mil registros de 2025, verificados pelo hash da
+execução anterior, e os mesmos 50 mil de 2026T1, sorteados com semente 202601.
+O teste reservado usa o ZIP oficial, o dicionário de posições e a matriz de
+disponibilidade de variáveis. O fator `1/1,007` estende a convenção histórica
+de deflação até a base de janeiro/2026. Nessa convenção, a renda do trimestre
+é convertida a partir do índice do mês anterior ao fechamento do trimestre.
+O script registra os hashes das fontes e guarda a base e os relatórios em
+`data/processed/previsao_adaptativa/`. [Microdados oficiais do IBGE](https://ftp.ibge.gov.br/Trabalho_e_Rendimento/Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/Trimestral/Microdados/2026/).
+
+| Amostra | Método | Cobertura geral | Cobertura no 1º decil | Cobertura no 10º decil | Largura média |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 2025 | Atual | 90,74% | 64,38% | 74,62% | R$ 47,53/h |
+| 2025 | Adaptativa | 90,14% | 76,26% | 68,89% | R$ 39,38/h |
+| 2026T1 | Atual | 90,86% | 66,51% | 72,89% | R$ 48,40/h |
+| 2026T1 | Adaptativa | 90,48% | 77,71% | 68,05% | R$ 40,47/h |
+
+Resultados não ponderados da execução `20261109T225853928638Z`. Os decis usam
+o salário observado de cada período. A cobertura empírica depende do período
+e da amostra. O teste de 2026T1 inclui um trimestre e a referência de 2025
+reúne quatro trimestres. A API `GET /api/comparacao-intervalos` entrega os
+agregados dos períodos disponíveis e a proveniência da comparação.
+
+### Ajustes conformais separados por limite
+
+```powershell
+python pnad_pipeline/scripts/25_comparar_intervalos.py --por-cauda
+```
+
+A extensão reutiliza os pipelines P5 e P95 registrados pelo script 25 e
+confere os hashes dos modelos e da amostra de 2024. Os ajustes usam os
+escores `P5 − y` e `y − P95`, cada um com ordem `ceil((n+1)*0.95)`. A meta
+nominal é de 5% de saídas por lado. Se a contração inverter os limites,
+usa-se o ponto médio dos limites ajustados. A execução de 2024 teve 2.499
+saídas por lado em 50 mil registros. [Referência do método](https://arxiv.org/html/1905.03222#Thmtheorem2).
+
+Os ajustes foram registrados antes da leitura dos 50 mil registros oficiais
+reservados de 2026T2. A semente é 202602. O rendimento foi convertido à base
+de janeiro/2026 com o fator 0,972195835, conforme a convenção histórica e
+o IPCA de fevereiro a maio. [Microdados do IBGE](https://ftp.ibge.gov.br/Trabalho_e_Rendimento/Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/Trimestral/Microdados/2026/).
+
+| Método em 2026T2 | Cobertura geral | Cobertura no 1º decil | Cobertura no 10º decil | Largura média |
+| --- | ---: | ---: | ---: | ---: |
+| Faixa atual | 90,90% | 67,62% | 72,01% | R$ 48,80/h |
+| CQR com ajuste único | 90,26% | 77,81% | 67,21% | R$ 40,70/h |
+| CQR com ajustes separados | 90,41% | 76,52% | 69,14% | R$ 42,21/h |
+
+O manifesto `manifesto_caudas.json` vincula a extensão à execução CQR de
+referência. A API agrega os três períodos e disponibiliza os hashes de
+calibração e protocolo da extensão `20261109T231600594795Z`.
+
+O formulário usa a faixa atual como padrão. Em 2026T2 ela cobriu melhor o
+decil superior. As versões CQR permitem comparar esse resultado com o ganho
+em largura e a maior cobertura no decil inferior.
+
+Para reproduzir a comparação em uma pasta isolada, passe o mesmo valor em
+`--artefatos-dir` nas duas chamadas ao script 25. Execute primeiro a comparação
+com ajuste único e depois a extensão com `--por-cauda`. Os relatórios são
+gerados localmente a partir das fontes e da referência registradas.

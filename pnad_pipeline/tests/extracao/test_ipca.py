@@ -3,7 +3,17 @@
 import pandas as pd
 import pytest
 
-from pnad_pipeline.extracao.ipca import calcular_fator_acumulado
+from pnad_pipeline.extracao.ipca import calcular_fator_acumulado, calcular_fator_para_base
+
+
+def test_conversao_de_trimestre_posterior_preserva_a_convencao_da_base():
+    ipca = pd.DataFrame({"data": pd.to_datetime(["2026-01-01", "2026-02-01", "2026-03-01"]),
+                         "valor": [0.5, 0.7, 0.9]})
+    assert calcular_fator_para_base(ipca, "01/03/2026", "01/01/2026") == pytest.approx(1 / 1.007)
+    assert calcular_fator_para_base(ipca, "01/02/2026", "01/01/2026") == 1
+    assert calcular_fator_para_base(ipca, "01/01/2026", "01/03/2026") == pytest.approx(1.005 * 1.007 * 1.009)
+    with pytest.raises(ValueError, match="IPCA mensal incompleto"):
+        calcular_fator_para_base(ipca.iloc[[0, 2]], "01/03/2026", "01/01/2026")
 
 
 @pytest.fixture

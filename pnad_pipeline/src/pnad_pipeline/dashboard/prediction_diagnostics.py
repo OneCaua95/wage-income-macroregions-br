@@ -27,8 +27,8 @@ def metrics(y_log, pred_log, *, smearing_factor=1.0):
     if not np.isfinite(smearing_factor) or smearing_factor <= 0:
         raise ValueError("O fator de retransformação precisa ser positivo e finito.")
     observed, predicted = np.exp(y_log), np.exp(np.clip(pred_log, -20, 20)) * smearing_factor
-    if not np.isfinite(observed).all() or not np.isfinite(predicted).all():
-        raise ValueError("A retransformação produziu valores não finitos.")
+    if not np.isfinite(observed).all() or not np.isfinite(predicted).all() or np.any(observed <= 0):
+        raise ValueError("A retransformação exige salários observados positivos e valores finitos.")
     if smearing_factor != 1.0:
         pred_log = np.clip(pred_log, -20, 20) + np.log(smearing_factor)
     result = {"n": len(y_log), "media_observada": float(observed.mean()), "media_prevista": float(predicted.mean())}
@@ -37,6 +37,8 @@ def metrics(y_log, pred_log, *, smearing_factor=1.0):
         sse, sst = float(error @ error), float(np.sum((actual - actual.mean())**2))
         result.update({f"mae_{suffix}": float(np.abs(error).mean()), f"rmse_{suffix}": float(np.sqrt(sse / len(error))),
                        f"vies_{suffix}": float(error.mean()), f"r2_{suffix}": float(1 - sse / sst) if sst > 0 else float(sse == 0)})
+    with np.errstate(over="ignore"):
+        result["mdape_salario_hora"] = float(np.median(np.abs(predicted - observed) / observed))
     return result
 
 
@@ -47,6 +49,17 @@ def quantile_bins(values, q):
     if len(edges) == 1:
         return np.zeros(len(values), dtype=int), np.repeat(edges, 2)
     return np.searchsorted(edges[1:-1], values, side="left"), edges
+
+
+def observed_wage_bands(observed):
+    bins, edges = quantile_bins(observed, 10)
+    count = len(edges) - 1
+    labels = {
+        i: {"grupo": f"D{i+1}" if count == 10 else f"Faixa {i+1} de {count}",
+            "ordem": i + 1, "limite_inferior": float(edges[i]), "limite_superior": float(edges[i+1])}
+        for i in range(count)
+    }
+    return bins, labels
 
 
 def sample_fingerprint(frame):
@@ -78,7 +91,7 @@ def build_diagnostics(frame, predictions, manifest, *, smearing_factor=1.0, peri
     observed = np.exp(y_log)
     education = pd.cut(pd.to_numeric(frame.Anos_de_Estudo, errors="coerce"), [-.001, 4, 8, 11, 16],
                        labels=["0–4 anos", "5–8 anos", "9–11 anos", "12 anos ou mais"]).astype("string").fillna("Sem informação").to_numpy()
-    deciles, edges = quantile_bins(observed, 10)
+    deciles, bands = observed_wage_bands(observed)
     labels = {"regiao": frame.Regiao.astype("string").fillna("Sem informação").to_numpy(),
               "sexo": frame.Sexo_Desc.astype("string").fillna("Sem informação").to_numpy(),
               "escolaridade": education, "faixa_salarial": deciles}
@@ -96,8 +109,7 @@ def build_diagnostics(frame, predictions, manifest, *, smearing_factor=1.0, peri
             row = {"dimensao": dimension, "grupo": str(value), "status": "ok" if enough else "insufficient",
                    **{k: v if enough or k == "n" else None for k, v in result.items()}}
             if dimension == "faixa_salarial":
-                label = f"D{value+1}" if len(edges) == 11 else f"Faixa {value+1} de {len(edges)-1}"
-                row.update({"grupo": label, "ordem": int(value+1), "limite_inferior": float(edges[value]), "limite_superior": float(edges[value+1])})
+                row.update(bands[value])
             rows.append(row)
     # Médias de faixas quantis, evitando entregar pontos individuais ao navegador.
     bins, _ = quantile_bins(observed, min(100, max(1, len(frame) // MIN_GROUP)))

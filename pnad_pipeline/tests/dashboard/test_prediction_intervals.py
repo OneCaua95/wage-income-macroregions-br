@@ -7,7 +7,8 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from pnad_pipeline.dashboard import prediction
+from pnad_pipeline.dashboard import prediction, prediction_diagnostics
+from pnad_pipeline.dashboard import prediction_cqr as cqr
 from pnad_pipeline.dashboard import prediction_intervals as intervals
 from pnad_pipeline.dashboard.api import app
 
@@ -15,6 +16,18 @@ from pnad_pipeline.dashboard.api import app
 class FixedModel:
     def predict(self, frame):
         return np.full(len(frame), np.log(10.))
+
+
+class FixedQuantile:
+    def __init__(self, quantile):
+        self.quantile = quantile
+
+    def fit(self, data, target):
+        assert data.Ano.eq("2021").all()
+        return self
+
+    def predict(self, data):
+        return np.full(len(data), np.log(2. if self.quantile < .5 else 40.))
 
 
 def frame(year, value=20., n=120):
@@ -98,6 +111,24 @@ def test_group_partitions_reconstruct_overall_and_small_groups_are_suppressed():
         intervals.evaluate_intervals(data, center, .5, "2024")
 
 
+def test_coverage_uses_the_diagnostic_wage_bands_with_ties():
+    data = frame(2025, n=120)
+    data["log_salario_hora"] = np.log(np.repeat([1., 2., 20.], [32, 35, 53]))
+    center = np.full(len(data), np.log(2.))
+    report = intervals.evaluate_intervals(data, center, .5, "2025")
+    manifest = {"run_id": "test", "modelo": "fixed", "sha256": "test", "data_base": "Janeiro/2026",
+                "entrada": {}, "seed": 42}
+    diagnostic = prediction_diagnostics.build_diagnostics(data, center, manifest, verify_original=False)
+    coverage_rows = [r for r in report["rows"] if r["dimensao"] == "faixa_salarial"]
+    diagnostic_rows = [r for r in diagnostic["rows"] if r["dimensao"] == "faixa_salarial"]
+    assert len(coverage_rows) == len(diagnostic_rows) == 2
+    keys = ("grupo", "n", "limite_inferior", "limite_superior")
+    assert [[r[k] for k in keys] for r in coverage_rows] == [[r[k] for k in keys] for r in diagnostic_rows]
+    assert [r["n"] for r in coverage_rows] == [67, 53]
+    assert [r["cobertos"] for r in coverage_rows] == [35, 0]
+    assert sum(r["n"] for r in coverage_rows) == len(data)
+
+
 def test_all_stages_disjoint_and_frozen_before_later_samples(execution):
     folder, result, calls = execution
     assert [offset for offset, expression in calls] == [0, 1, 3, 4, 5, 2]
@@ -164,3 +195,106 @@ def test_api_rejects_radius_different_from_frozen_calibration(execution):
     pointer["relatorio"] = intervals.save(report, folder, "relatorio")
     (folder / "manifesto.json").write_text(json.dumps(pointer), encoding="utf-8")
     assert TestClient(app).get("/api/intervalos-previsao").status_code == 409
+
+
+def test_refresh_upgrades_previous_report_and_rejects_a_different_sample(execution, monkeypatch):
+    folder, old, _ = execution
+    (folder / "base.parquet").touch()
+    monkeypatch.setattr(intervals, "ROOT", folder)
+    pointer_path = folder / "manifesto.json"
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    old["dimensoes"] = {k: v for k, v in old["dimensoes"].items() if k != "faixa_salarial"}
+    for section in ("calibration", "test"):
+        old[section]["rows"] = [r for r in old[section]["rows"] if r["dimensao"] != "faixa_salarial"]
+    old["diagnostico"]["summary"].pop("mdape_salario_hora")
+    for row in old["diagnostico"]["rows"]:
+        row.pop("mdape_salario_hora")
+    pointer["relatorio"] = intervals.save(old, folder, "relatorio")
+    pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
+
+    def sample(path, expression, limit, seed):
+        return frame(2024 if seed == 47 else 2025, 20. if seed == 47 else 5.)
+
+    monkeypatch.setattr(prediction, "sample_frame", sample)
+    updated = intervals.refresh_evaluation(folder)
+    assert updated["diagnostico"]["summary"]["mdape_salario_hora"] == pytest.approx(3.)
+    assert "faixa_salarial" in updated["dimensoes"]
+    for key in ("run_id", "modelo_sha256", "calibracao_arquivo", "decisao_arquivo", "protocolo_arquivo", "raio_log"):
+        assert updated[key] == old[key]
+    assert updated["test"]["summary"] == old["test"]["summary"]
+
+    saved_pointer = pointer_path.read_bytes()
+    monkeypatch.setattr(prediction, "sample_frame", lambda *args: sample(*args).assign(Sexo_Desc="Mulher"))
+    with pytest.raises(ValueError, match="não reproduz a amostra"):
+        intervals.refresh_evaluation(folder)
+    assert pointer_path.read_bytes() == saved_pointer
+
+
+def test_cqr_signed_correction_and_ordered_bounds():
+    correction, rank = intervals.conformal_order(np.full(20, -.25))
+    assert correction == -.25 and rank == 19
+    lower, upper = cqr.calibrated_bounds(np.array([0., 1.]), np.array([2., 1.2]), correction)
+    assert lower == pytest.approx([.25, 1.1])
+    assert upper == pytest.approx([1.75, 1.1])
+    lower, upper = cqr.calibrated_bounds(np.array([0., 1.]), np.array([2., 1.2]), -.6, -.1)
+    assert lower == pytest.approx([.6, 1.35])
+    assert upper == pytest.approx([1.9, 1.35])
+
+
+def test_cqr_freezes_both_calibrations_and_reuses_models_for_the_reserved_test(execution, monkeypatch):
+    folder, baseline, _ = execution
+    (folder / "base.parquet").touch()
+    output = folder / "comparacao"
+    monkeypatch.setattr(cqr, "ROOT", folder)
+    monkeypatch.setattr(cqr, "ARTIFACT_DIR", output)
+    calls = []
+
+    def sample(path, expression, limit, seed):
+        calls.append(seed)
+        if seed == 44:
+            assert len(list(output.glob("calibracao_*.json"))) == 1
+        return frame({42: 2021, 47: 2024, 44: 2025}[seed], 5. if seed == 44 else 20.)
+
+    def holdout(path, n):
+        assert calls == [42, 47, 44]
+        frozen, = path.glob("calibracao_*.json")
+        record = json.loads(frozen.read_text(encoding="utf-8"))
+        assert record["correcao_log"] == pytest.approx(-np.log(2.))
+        assert (path / record["modelo"]["arquivo"]).is_file()
+        return frame(2026, 5., n).assign(Trimestre="1"), {"url_fonte": "fonte sintética"}
+
+    monkeypatch.setattr(prediction, "sample_frame", sample)
+    monkeypatch.setattr(prediction, "legacy_module", lambda: SimpleNamespace(
+        BASE_CATEGORICAL=[], FIXED_EFFECTS=[], TARGET="log_salario_hora",
+        build_pipeline=lambda model, categories, dense: FixedQuantile(model.quantile)))
+    result = cqr.compare_intervals(holdout, output, folder)
+    assert result["periodos"]["2025"]["geral"]["atual"] == baseline["test"]["summary"]
+    assert result["periodos"]["2026T1"]["geral"]["adaptativa"]["cobertura"] == 1.
+    client = TestClient(app)
+    response = client.get("/api/comparacao-intervalos")
+    assert response.status_code == 200 and response.json()["run_id"] == result["run_id"]
+
+    def tails_holdout(path, n):
+        assert calls == [42, 47, 44, 47]
+        frozen, = path.glob("calibracao_caudas_*.json")
+        record = json.loads(frozen.read_text(encoding="utf-8"))
+        assert record["correcao_inferior_log"] == pytest.approx(-np.log(10.))
+        assert record["correcao_superior_log"] == pytest.approx(-np.log(2.))
+        assert record["ordem_inferior"] == record["ordem_superior"] == 115
+        assert record["modelo"] == result["calibracao"]["modelo"]
+        return frame(2026, 5., n).assign(Trimestre="2"), {"url_fonte": "fonte sintética"}
+
+    pointer_path = output / "manifesto.json"
+    pointer = pointer_path.read_bytes()
+    tails = cqr.compare_separate_tails(tails_holdout, output, folder)
+    assert pointer_path.read_bytes() == pointer
+    holdout_result = tails["periodos"]["2026T2"]["geral"]
+    assert holdout_result["adaptativa"]["cobertos"] == 120
+    assert holdout_result["por_cauda"]["abaixo"] == 120
+    merged = client.get("/api/comparacao-intervalos").json()
+    assert merged["periodos"]["2026T1"] == result["periodos"]["2026T1"]
+    assert merged["periodos"]["2026T2"] == tails["periodos"]["2026T2"]
+    assert merged["por_cauda"]["calibracao_arquivo"] == tails["calibracao_arquivo"]
+    frozen_path = output / result["calibracao_arquivo"]["arquivo"]
+    frozen_path.write_bytes(frozen_path.read_bytes() + b" ")
+    assert client.get("/api/comparacao-intervalos").status_code == 409

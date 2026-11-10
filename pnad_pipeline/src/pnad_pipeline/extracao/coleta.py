@@ -20,7 +20,7 @@ from .constants import (
 from .deflacao import aplicar_deflacao, calcular_data_referencia_trimestre
 from pnad_pipeline.analise.amostragem import validar_desenho
 from .io import ParquetStreamWriter
-from .ipca import calcular_fator_acumulado, get_ipca_bc
+from .ipca import calcular_fator_para_base, get_ipca_bc
 from .otimizacao import calcular_memoria_mb, otimizar_tipos
 from .pnad_extractor import PNADExtractor
 from .regiao import mapear_regiao
@@ -75,7 +75,7 @@ def processar_periodo(
 
     # 3) Deflação com IPCA
     data_inicio = calcular_data_referencia_trimestre(ano, trimestre)
-    fator = calcular_fator_acumulado(df_ipca, data_inicio=data_inicio, data_fim=dt_base)
+    fator = calcular_fator_para_base(df_ipca, data_inicio, dt_base)
     df_deflacionado = aplicar_deflacao(df, fator=fator)
     del df
 

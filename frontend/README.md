@@ -276,3 +276,28 @@ períodos (44 linhas nesta execução), contagens, larguras, meta, raio e
 identificação da execução. O CSV de erros traz o MdAPE como proporção.
 Grupos com menos de 30 registros têm suas métricas suprimidas. Valores não
 ponderados a preços de janeiro/2026. A faixa não é IC de média ou coeficientes.
+
+## Comparação de intervalos adaptativos
+
+O formulário da aba **Previsão** usa a faixa atual. O painel
+**Comparação de faixas de previsão** reúne as versões experimentais do CQR.
+O seletor mostra a referência de 2025 e os testes de 2026T1 e 2026T2.
+A tabela detalha os decis do salário observado. O CSV completo inclui os
+hashes de modelo, amostra e calibração.
+
+Gere o relatório com `python pnad_pipeline/scripts/25_comparar_intervalos.py`.
+No teste de 2026T1, a faixa adaptativa teve cobertura de 90,48% e largura
+média de R$ 40,47/h. Na faixa atual, os valores foram 90,86% e R$ 48,40/h.
+A cobertura no primeiro decil subiu de 66,51% para 77,71%. No último decil,
+caiu de 72,89% para 68,05%.
+
+Use `python pnad_pipeline/scripts/25_comparar_intervalos.py --por-cauda` para
+acrescentar a comparação de 2026T2. O painel mostra três métodos nesse período.
+A tabela permite alternar entre cobertura, largura e contagens de salários
+abaixo ou acima dos limites. O CSV completo tem 77 linhas nesta execução.
+
+Em 2026T2, os ajustes separados reduziram as saídas acima do limite no último
+decil de 1.631 para 1.535 em relação ao ajuste único. A cobertura nesse decil
+passou de 67,21% para 69,14%. A faixa atual cobriu 72,01%. Esse resultado
+favoreceu a faixa atual como padrão, dada a prioridade à cobertura no decil
+superior.

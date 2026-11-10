@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from . import data
 from .prediction import predict
+from .prediction_cqr import get_comparison
 from .prediction_diagnostics import get_diagnostics
 from .prediction_smearing import get_smearing
 from .prediction_intervals import get_intervals, predict_interval
@@ -153,6 +154,11 @@ def prediction_interval_report():
 @app.post("/api/previsao-intervalos")
 def prediction_interval(body: Profile):
     return predict_interval(body.perfil)
+
+
+@app.get("/api/comparacao-intervalos")
+def prediction_interval_comparison():
+    return get_comparison()
 
 
 app.mount("/", StaticFiles(directory=data.ROOT / "frontend",html=True),name="frontend")

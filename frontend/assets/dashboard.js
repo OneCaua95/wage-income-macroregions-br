@@ -26,7 +26,8 @@ S.duanDimension=saved.duanDimension || 'regiao';
 S.duanPeriod=saved.duanPeriod || '2024';
 S.intervalDimension=saved.intervalDimension || 'regiao';
 S.intervalPeriod=saved.intervalPeriod || '2025';
-let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, predictionDiagnosticsData, smearingData, intervalData, ufMapData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
+S.cqrPeriod=saved.cqrPeriod || '2026T2';
+let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, predictionDiagnosticsData, smearingData, intervalData, cqrData, ufMapData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
 const tables = new Map();
 const selection = () => new URLSearchParams({fonte:S.source,periodo:S.period,...S.filters});
 const sourceData = () => catalog.sources.find(x=>x.id===S.source);
@@ -92,7 +93,7 @@ $('#source').onchange=e=>{S.source=e.target.value;buildFilters();refresh();};
 $('#period').onchange=e=>{S.period=e.target.value;refresh();};
 $('#clear-filters').onclick=()=>{S.filters={};buildFilters();refresh();};
 $('#toggle-filters').onclick=()=>{const button=$('#toggle-filters');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',open);$('#filter-fields').hidden=!open;};
-$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,mapa_por_uf:ufMapData,comparacao:comparisonData,previsao:predictionData},null,2));
+$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,comparacao_intervalos:cqrData,mapa_por_uf:ufMapData,comparacao:comparisonData,previsao:predictionData},null,2));
 
 function provenance(p) {
   $('#context-line').innerHTML=`${badge(p.ponderacao,p.ponderacao==='V1028'?'green':'amber')}<strong>${esc(S.period)}</strong><span>·</span><span>${esc(p.dominio)}</span><span>·</span><span>Preços de janeiro/2026</span><span>·</span><span>Processamento: ${esc(date(p.processado_em))}</span>`;
@@ -424,6 +425,122 @@ function wireIntervals() {
     csv('pnad_intervalos_cobertura',rows,d.provenance);
   };update();
 }
+const CQR_PERIOD_LABELS={
+  '2025':'2025 · referência retrospectiva',
+  '2026T1':'2026T1 · teste do ajuste único',
+  '2026T2':'2026T2 · teste reservado dos três métodos'
+};
+const CQR_METHODS={
+  atual:{label:'Faixa atual',color:'#2f6df6',shape:'circle'},
+  adaptativa:{label:'CQR · ajuste único',color:'#9a5a16',shape:'square'},
+  por_cauda:{label:'CQR · ajustes por limite',color:'#0e766e',shape:'diamond'}
+};
+const CQR_TABLE_METRICS={
+  cobertura:{label:'Cobertura',format:pct},
+  largura_media:{label:'Largura média (R$/h)',format:money},
+  largura_mediana:{label:'Largura mediana (R$/h)',format:money},
+  abaixo:{label:'Abaixo do limite (registros)',format:v=>fmt(v,0)},
+  acima:{label:'Acima do limite (registros)',format:v=>fmt(v,0)}
+};
+function activeCqr() {
+  const base=activeIntervals(),comparison=cqrData;
+  if(comparison?.status!=='ok'||!base)return null;
+  const ref=comparison.atual;
+  const sameReference=ref.run_id===base.run_id&&ref.modelo_sha256===base.modelo_sha256&&ref.calibracao_sha256===base.calibracao_arquivo.sha256;
+  return sameReference?comparison:null;
+}
+function cqrMark(method,x,y) {
+  const {shape,color}=CQR_METHODS[method];
+  if(shape==='circle')return `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff"/>`;
+  if(shape==='square')return `<rect x="${x-4.5}" y="${y-4.5}" width="9" height="9" fill="${color}" stroke="#fff"/>`;
+  return `<path d="M ${x} ${y-6} l 6 6 -6 6 -6 -6 z" fill="${color}" stroke="#fff"/>`;
+}
+function cqrChart(rows,target,methods) {
+  const valid=rows.filter(row=>row.status==='ok');
+  if(!valid.length)return '';
+  const left=100,right=842,top=43,height=top+valid.length*28+30;
+  const x=value=>left+value*(right-left);
+  const guides=[0,.25,.5,.75,1].map(value=>`<line x1="${x(value)}" x2="${x(value)}" y1="${top-13}" y2="${height-29}" stroke="#edf0f4"/><text x="${x(value)}" y="${height-8}" text-anchor="middle">${pct(value)}</text>`).join('');
+  const marks=valid.map((row,index)=>{
+    const y=top+index*28;
+    const points=methods.map((method,position)=>({method,x:x(row[method].cobertura),y:y+4*(position-(methods.length-1)/2)}));
+    const path=[...points].sort((a,b)=>a.x-b.x).map(point=>`${point.x},${point.y}`).join(' ');
+    const title=methods.map(method=>`${CQR_METHODS[method].label} ${pct(row[method].cobertura)}`).join(' · ');
+    return `<g tabindex="0"><title>${esc(row.grupo)} · ${esc(title)}</title><text x="${left-12}" y="${y+4}" text-anchor="end">${esc(row.grupo)}</text><polyline points="${path}" stroke="#8291a6" stroke-width="1.5" fill="none"/>${points.map(point=>cqrMark(point.method,point.x,point.y)).join('')}</g>`;
+  }).join('');
+  const legend=methods.map(method=>`<span class="cqr-${CQR_METHODS[method].shape}">${esc(CQR_METHODS[method].label)}</span>`).join('');
+  return `<div class="cqr-legend">${legend}</div><div class="interval-chart cqr-chart"><svg viewBox="0 0 900 ${height}" role="img" aria-label="Comparação da cobertura observada por decil, com meta de noventa por cento"><title>Cobertura por decil do salário observado</title>${guides}<line x1="${x(target)}" x2="${x(target)}" y1="24" y2="${height-29}" stroke="#69788d" stroke-dasharray="5 4"/><text x="${x(target)}" y="16" text-anchor="middle">Meta ${pct(target)}</text>${marks}</svg></div>`;
+}
+function cqrPanel() {
+  const comparison=activeCqr();
+  const title='Comparação de faixas de previsão';
+  if(!comparison)return panel(title,'Comparação temporal com meta de 90%',empty('Comparação indisponível',cqrData?.message||'Gere a comparação para a execução atual com o script 25.'));
+  const finalPeriod=comparison.por_cauda?.protocolo.teste_final ?? comparison.protocolo.teste_final;
+  if(!Object.hasOwn(comparison.periodos,S.cqrPeriod))S.cqrPeriod=finalPeriod;
+  const periods=Object.keys(comparison.periodos).reverse();
+  const periodOptions=periods.map(period=>`<option value="${esc(period)}" ${S.cqrPeriod===period?'selected':''}>${esc(CQR_PERIOD_LABELS[period])}</option>`).join('');
+  const metricOptions=Object.entries(CQR_TABLE_METRICS).map(([key,metric])=>`<option value="${key}">${esc(metric.label)}</option>`).join('');
+  const sourceLinks=periods.filter(period=>comparison.periodos[period].fonte).map(period=>`<p><a href="${esc(comparison.periodos[period].fonte.url_fonte)}" target="_blank" rel="noreferrer">Microdados oficiais do IBGE · ${esc(period)} ↗</a></p>`).join('');
+  const tails=comparison.por_cauda;
+  const tailProtocol=tails?`<p class="note">Em 2026T2, o CQR com ajustes por limite reutiliza os mesmos modelos P5 e P95. Cada limite recebe a sua própria correção de 2024, com meta nominal de 5% de saídas por lado.</p><dl class="detail-list"><dt>Execução de 2026T2</dt><dd>${esc(tails.run_id)}</dd><dt>SHA-256 da calibração por limite</dt><dd>${esc(tails.calibracao_arquivo.sha256)}</dd></dl>`:'';
+  return panel(title,'Mesmos registros para os métodos · meta de 90% · não ponderado',
+    `<p>O CQR estima os limites a partir das características do perfil. A comparação usa os ajustes de 2024 e mostra a cobertura observada nos decis salariais.</p><div class="inline-options cqr-controls"><label>Período da comparação<select id="cqr-period">${periodOptions}</select></label><label>Métrica na tabela<select id="cqr-metric">${metricOptions}</select></label></div><div id="cqr-results" aria-live="polite"></div><p class="note">Os decis usam o salário observado no período selecionado e mantêm empates juntos. As faixas em reais usam preços de janeiro/2026.</p><details class="prediction-diagnostic-method"><summary>Protocolo, fontes e calibração</summary><p class="note">Treino em 2013–2021. Gradient Boosting ajusta P5 e P95 em log. Os modelos e as correções foram gravados antes da leitura das amostras de teste correspondentes.</p><p class="note">A amostra abrange pessoas ocupadas de 25 a 65 anos com renda e horas positivas. A mudança temporal e o desenho da PNAD limitam a generalização da cobertura.</p><dl class="detail-list"><dt>Execução do CQR com ajuste único</dt><dd>${esc(comparison.run_id)}</dd><dt>SHA-256 da calibração</dt><dd>${esc(comparison.calibracao_arquivo.sha256)}</dd></dl>${tailProtocol}${sourceLinks}<p><a href="${esc(comparison.protocolo.referencia_metodologica)}" target="_blank" rel="noreferrer">Regressão quantílica conformal · Romano, Patterson e Candès ↗</a></p></details>`,
+    '<button class="button secondary" id="export-cqr" type="button">↓ CSV · comparação completa</button>');
+}
+function wireCqr() {
+  const comparison=activeCqr();
+  if(!comparison||!$('#cqr-results'))return;
+  const runForPeriod=period=>period===comparison.por_cauda?.protocolo.teste_final?comparison.por_cauda:comparison;
+  const provenance=result=>({conjunto:'Comparação de intervalos',periodo:result.periodo,ponderacao:comparison.ponderacao,
+    versao:comparison.version,filtros:{},run_id:runForPeriod(result.periodo).run_id,amostra_sha256:result.amostra_sha256});
+  const groups=result=>[{grupo:'Geral',n:result.geral.atual.n,status:'ok',...result.geral},...result.faixas];
+  const renderTable=()=>{
+    const result=comparison.periodos[S.cqrPeriod];
+    const metricKey=$('#cqr-metric').value;
+    const metric=CQR_TABLE_METRICS[metricKey];
+    const methods=Object.keys(result.geral);
+    const rows=groups(result).map(row=>{
+      const {grupo,n,status,limite_inferior,limite_superior}=row;
+      const values={grupo,n,status,limite_inferior,limite_superior,metrica:metricKey};
+      for(const method of methods)values[method]=row[method][metricKey];
+      return values;
+    });
+    const columns=[{key:'grupo',label:'Faixa salarial',sub:predictionGroupSubtitle},{key:'n',label:'Registros',format:v=>fmt(v,0)},
+      ...methods.map(method=>({key:method,label:CQR_METHODS[method].label,format:metric.format}))];
+    makeTable('cqr-table',rows,columns,provenance(result));
+  };
+  const render=()=>{
+    const result=comparison.periodos[S.cqrPeriod],overall=result.geral;
+    const methods=Object.keys(overall);
+    const summary=methods.map(method=>{
+      const stats=overall[method];
+      return `<div><strong>${pct(stats.cobertura)}</strong><span>${esc(CQR_METHODS[method].label)} · largura média ${money(stats.largura_media)}/h</span><span>${pct(stats.abaixo/stats.n)} abaixo · ${pct(stats.acima/stats.n)} acima</span></div>`;
+    }).join('');
+    $('#cqr-results').innerHTML=`<p class="explanation">${esc(CQR_PERIOD_LABELS[result.periodo])} · ${fmt(overall.atual.n,0)} registros</p><div class="mini-metrics cqr-summary${methods.length===3?' cqr-three':''}">${summary}</div>${cqrChart(result.faixas,comparison.meta,methods)}<div id="cqr-table"></div>`;
+    renderTable();
+  };
+  $('#cqr-period').onchange=event=>{S.cqrPeriod=event.target.value;save();render();};
+  $('#cqr-metric').onchange=renderTable;
+  $('#export-cqr').onclick=()=>{
+    const rows=[];
+    for(const result of Object.values(comparison.periodos)){
+      const run=runForPeriod(result.periodo);
+      for(const row of groups(result)){
+        for(const method of Object.keys(result.geral)){
+          const calibration=method==='por_cauda'?comparison.por_cauda:comparison;
+          rows.push({...row[method],grupo:row.grupo,dimensao:row.ordem==null?'geral':'faixa_salarial',
+            metodo:method,periodo:result.periodo,meta:comparison.meta,amostra_sha256:result.amostra_sha256,
+            execucao_comparacao:run.run_id,execucao_modelo:method==='atual'?comparison.atual.run_id:comparison.run_id,
+            modelo_sha256:method==='atual'?comparison.atual.modelo_sha256:calibration.calibracao.modelo.sha256,
+            calibracao_sha256:method==='atual'?comparison.atual.calibracao_sha256:calibration.calibracao_arquivo.sha256,
+            protocolo_sha256:run.protocolo_arquivo.sha256,data_base:comparison.data_base});
+        }
+      }
+    }
+    csv('pnad_comparacao_intervalos',rows,{...provenance(comparison.periodos[S.cqrPeriod]),run_id:undefined});
+  };
+  render();
+}
 function activeSmearing() {
   return smearingData?.status==='ok'&&smearingData.run_id===modelData?.prediction?.run_id&&smearingData.modelo_sha256===modelData?.prediction?.sha256?smearingData:null;
 }
@@ -508,13 +625,13 @@ function renderPrediction() {
   const duan=intervals?null:activeSmearing(),displayMetrics=duan?duan.test[duan.decisao.recomendada].summary:m?.metricas_teste;
   const displayInterpretation=duan?.decisao.adotar_duan?'Conversão de Duan para aproximar a média em reais; escolha feita na validação de 2024.':m?.interpretacao;
   if(!m?.schema){$('#content').innerHTML=empty('Previsão ainda indisponível','Execute python pnad_pipeline/scripts/12_treinar_previsao.py para exportar o modelo e seu pré-processamento.')+rankingPanel();wireRanking();return;}
-  $('#content').innerHTML=`<div class="notice">Previsão para um perfil ocupado, de 25 a 65 anos, com renda e horas positivas. Os filtros descritivos permanecem salvos; a previsão usa os campos deste formulário e o modelo global.</div><div class="grid equal">${panel('Defina o perfil','As variáveis derivadas são calculadas de forma consistente com o pipeline.',`<form id="prediction-form"><div class="form-grid">${m.schema.map(f=>`<label>${esc(f.label)}${f.type==='number'?`<input name="${f.name}" type="number" inputmode="numeric" min="${f.min}" max="${f.max}" step="1" value="${f.name==='Idade'?40:12}" required>`:`<select name="${f.name}" required>${f.options.map(o=>`<option value="${esc(o.value)}" ${(f.name==='Ano'&&o.value==='2025')||(f.name==='UF'&&o.value==='35')||(f.name==='Trimestre'&&o.value==='4')?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`}</label>`).join('')}</div><div class="derived" id="derived-features"></div><div class="form-footer"><button class="button" type="submit" id="predict-button">Estimar salário-hora →</button><span class="note">Valores reais · janeiro/2026</span></div></form>`)}${panel('Estimativa do modelo','Nova execução selecionada exclusivamente na validação temporal.',`<div id="prediction-result"><div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO</span><div class="big-value">— <span class="kpi-unit">R$/h</span></div><p>Preencha o perfil e calcule a estimativa.</p></div></div><h3>${esc(m.modelo)}</h3><p class="note">${esc(m.criterio)}.</p><div class="mini-metrics" style="margin-top:16px"><div><strong>${money(displayMetrics.rmse_salario_hora)}</strong><span>RMSE R$/h · teste</span></div><div><strong>${money(displayMetrics.mae_salario_hora)}</strong><span>MAE R$/h · teste</span></div><div><strong>${fmt(displayMetrics.r2_salario_hora,3)}</strong><span>R² reais · teste</span></div></div><p class="note">Treino ${esc(m.divisao_temporal.treino)} · validação ${esc(m.divisao_temporal.validacao)} · teste ${esc(m.divisao_temporal.teste)}. Não ponderado.</p><p class="explanation">${esc(displayInterpretation)} ${esc(m.intervalo)}</p><details><summary class="note">Artefato, amostra e processamento</summary><dl class="detail-list"><dt>Execução</dt><dd>${esc(m.run_id)}</dd><dt>Treinado em</dt><dd>${date(m.treinado_em)}</dd><dt>Amostras</dt><dd>${esc(JSON.stringify(m.amostras))}</dd><dt>scikit-learn</dt><dd>${esc(m.sklearn)}</dd><dt>SHA-256</dt><dd>${esc(m.sha256)}</dd></dl></details>`)}</div>`+intervalPanel()+(intervals?`<details class="historical-prediction"><summary>Execução anterior · comparação de Duan (2013–2022 / 2023–2024)</summary><p class="note">Modelo e amostras próprios. Os valores desta comparação histórica não são usados no formulário ou nos intervalos atuais.</p>${duanPanel()}</details>`:duanPanel())+`<div id="prediction-diagnostics">${predictionDiagnosticsPanels()}</div>`+panel('Seleção da nova execução','Mesmo alvo, escala log, amostra e período; teste avaliado somente para o vencedor.','<div id="validation-table"></div>')+rankingPanel();
+  $('#content').innerHTML=`<div class="notice">Previsão para um perfil ocupado, de 25 a 65 anos, com renda e horas positivas. Os filtros descritivos permanecem salvos; a previsão usa os campos deste formulário e o modelo global.</div><div class="grid equal">${panel('Defina o perfil','As variáveis derivadas são calculadas de forma consistente com o pipeline.',`<form id="prediction-form"><div class="form-grid">${m.schema.map(f=>`<label>${esc(f.label)}${f.type==='number'?`<input name="${f.name}" type="number" inputmode="numeric" min="${f.min}" max="${f.max}" step="1" value="${f.name==='Idade'?40:12}" required>`:`<select name="${f.name}" required>${f.options.map(o=>`<option value="${esc(o.value)}" ${(f.name==='Ano'&&o.value==='2025')||(f.name==='UF'&&o.value==='35')||(f.name==='Trimestre'&&o.value==='4')?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`}</label>`).join('')}</div><div class="derived" id="derived-features"></div><div class="form-footer"><button class="button" type="submit" id="predict-button">Estimar salário-hora →</button><span class="note">Valores reais · janeiro/2026</span></div></form>`)}${panel('Estimativa do modelo','Nova execução selecionada exclusivamente na validação temporal.',`<div id="prediction-result"><div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO</span><div class="big-value">— <span class="kpi-unit">R$/h</span></div><p>Preencha o perfil e calcule a estimativa.</p></div></div><h3>${esc(m.modelo)}</h3><p class="note">${esc(m.criterio)}.</p><div class="mini-metrics" style="margin-top:16px"><div><strong>${money(displayMetrics.rmse_salario_hora)}</strong><span>RMSE R$/h · teste</span></div><div><strong>${money(displayMetrics.mae_salario_hora)}</strong><span>MAE R$/h · teste</span></div><div><strong>${fmt(displayMetrics.r2_salario_hora,3)}</strong><span>R² reais · teste</span></div></div><p class="note">Treino ${esc(m.divisao_temporal.treino)} · validação ${esc(m.divisao_temporal.validacao)} · teste ${esc(m.divisao_temporal.teste)}. Não ponderado.</p><p class="explanation">${esc(displayInterpretation)} ${esc(m.intervalo)}</p><details><summary class="note">Artefato, amostra e processamento</summary><dl class="detail-list"><dt>Execução</dt><dd>${esc(m.run_id)}</dd><dt>Treinado em</dt><dd>${date(m.treinado_em)}</dd><dt>Amostras</dt><dd>${esc(JSON.stringify(m.amostras))}</dd><dt>scikit-learn</dt><dd>${esc(m.sklearn)}</dd><dt>SHA-256</dt><dd>${esc(m.sha256)}</dd></dl></details>`)}</div>`+intervalPanel()+cqrPanel()+(intervals?`<details class="historical-prediction"><summary>Execução anterior · comparação de Duan (2013–2022 / 2023–2024)</summary><p class="note">Modelo e amostras próprios. Os valores desta comparação histórica não são usados no formulário ou nos intervalos atuais.</p>${duanPanel()}</details>`:duanPanel())+`<div id="prediction-diagnostics">${predictionDiagnosticsPanels()}</div>`+panel('Seleção da nova execução','Mesmo alvo, escala log, amostra e período; teste avaliado somente para o vencedor.','<div id="validation-table"></div>')+rankingPanel();
   makeTable('validation-table',m.validacao,[{key:'modelo',label:'Modelo / configuração'},{key:'rmse_log',label:'RMSE log · validação',format:v=>fmt(v,4)},{key:'mae_log',label:'MAE log · validação',format:v=>fmt(v,4)},{key:'r2_log',label:'R² log · validação',format:v=>fmt(v,4)}],{conjunto:'Nova execução '+m.run_id,periodo:m.divisao_temporal.validacao,ponderacao:'Não ponderado',versao:m.version,filtros:{}});
   const form=$('#prediction-form');
   const derived=()=>{const p=Object.fromEntries(new FormData(form)),c=+p.Categoria_emprego;$('#derived-features').innerHTML=badge([1,3,5,7].includes(c)||[8,9].includes(c)&&p.Contribuicao_previdencia==='1'?'Formal':'Informal')+badge([5,6,7].includes(c)?'Setor público':'Setor privado')+badge('Idade² = '+fmt(Number(p.Idade)**2,0));};
   form.onchange=derived;derived();
   form.onsubmit=async e=>{e.preventDefault();const btn=$('#predict-button');btn.disabled=true;btn.textContent='Calculando…';try{const r=await api(intervals?'/api/previsao-intervalos':'/api/previsao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({perfil:Object.fromEntries(new FormData(form))}),signal:controller.signal});predictionData=r;const target=$('#prediction-result');if(!target)return;target.innerHTML=`<div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO · PREÇOS JAN/2026</span><div class="big-value">${money(r.salario_hora)} <span class="kpi-unit">/h</span></div><p>${esc(r.interpretacao)}</p></div>${profileInterval(r)}${r.duan_disponivel?`<div class="prediction-conversions"><div><span>Original · exp(log)</span><strong>${money(r.salario_hora_original)}/h</strong></div><div><span>Duan · fator ${fmt(r.fator_duan,5)}</span><strong>${money(r.salario_hora_duan)}/h</strong></div></div><p class="note">Conversão recomendada pela validação de 2024: ${r.retransformacao==='duan'?'Duan':'original'}. Os valores aproximam alvos distintos: média geométrica e média em reais.</p>`:''}${r.aviso_ano?`<p class="explanation">${esc(r.aviso_ano)}</p>`:''}<button class="text-button" id="export-prediction">↓ Exportar previsão e perfil</button>`;$('#export-prediction').onclick=()=>download('pnad_previsao_perfil.json','application/json',JSON.stringify({...r,manifesto:m},null,2));}catch(e){if(e.name!=='AbortError'&&$('#prediction-result'))$('#prediction-result').innerHTML=empty('Previsão indisponível',e.message);}finally{btn.disabled=false;btn.textContent='Estimar salário-hora →';}};
-  wireRanking();wireDuan();wirePredictionDiagnostics();wireIntervals();
+  wireRanking();wireDuan();wirePredictionDiagnostics();wireIntervals();wireCqr();
 }
 
 function forest(rows) {
@@ -952,7 +1069,7 @@ async function refresh() {
     const qe=selection();qe.set('dimensao',S.educationDimension);qe.set('especificacao',S.educationDimension==='geral'?S.educationSpec:'spline');qe.set('contraste',S.educationContrast);
     const qs=selection();qs.set('dimensao',S.selectionDimension);
     const mapQuery=selection();mapQuery.delete('uf');
-    const results=await Promise.all([api('/api/descritiva?'+q,{signal:controller.signal}),api('/api/modelos',{signal:controller.signal}),api('/api/inferencia?'+q,{signal:controller.signal}),api('/api/educacao?'+qe,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/selecao?'+qs,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/heterogeneidade-regional?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/pseudopainel?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/diferencas-grupos?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='visao'?api('/api/mapa-uf?'+mapQuery,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),api('/api/oaxaca?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='previsao'?api('/api/diagnostico-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/duan',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),['previsao','metodologia'].includes(S.view)?api('/api/intervalos-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
+    const results=await Promise.all([api('/api/descritiva?'+q,{signal:controller.signal}),api('/api/modelos',{signal:controller.signal}),api('/api/inferencia?'+q,{signal:controller.signal}),api('/api/educacao?'+qe,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/selecao?'+qs,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/heterogeneidade-regional?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/pseudopainel?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/diferencas-grupos?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='visao'?api('/api/mapa-uf?'+mapQuery,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),api('/api/oaxaca?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='previsao'?api('/api/diagnostico-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/duan',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),['previsao','metodologia'].includes(S.view)?api('/api/intervalos-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/comparacao-intervalos',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
     if(token!==revision)return;
     [current,modelData,inferData]=results;
     if(educationToken===educationRevision)educationData=results[3];
@@ -966,6 +1083,7 @@ async function refresh() {
     predictionDiagnosticsData=results[11];
     smearingData=results[12];
     intervalData=results[13];
+    cqrData=results[14];
     provenance(current.provenance);
     if(current.status==='empty'||current.status==='insufficient'){$('#notice').hidden=false;$('#notice').textContent=current.status==='empty'?'Nenhuma observação para este recorte. Altere os filtros ou limpe a seleção.':'Amostra insuficiente: menos de 30 salários-hora válidos. Estatísticas são exploratórias; o comparador não apresentará diferenças.';}
     ({visao:renderOverview,descritiva:renderDescriptive,desigualdade:renderInequality,previsao:renderPrediction,associacao:renderInference,metodologia:renderMethodology})[S.view]();

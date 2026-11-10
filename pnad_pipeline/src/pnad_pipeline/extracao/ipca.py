@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, Union
+import numpy as np
 import pandas as pd
 
 from .constants import IPCA_SGS_URL_PADRAO
@@ -97,3 +98,20 @@ def calcular_fator_acumulado(
         fator_acumulado,
     )
     return fator_acumulado
+
+
+def calcular_fator_para_base(df_ipca: pd.DataFrame, data_inicio: str, data_base: str) -> float:
+    """Estende a convenção inclusiva para fontes posteriores à data-base.
+
+    O fator histórico equivale a índice(base) / índice(mês anterior à fonte).
+    Para uma fonte posterior, inverte a inflação entre esses dois índices.
+    """
+    inicio = pd.to_datetime(data_inicio, dayfirst=True)
+    base = pd.to_datetime(data_base, dayfirst=True)
+    if inicio <= base:
+        return calcular_fator_acumulado(df_ipca, inicio, base)
+    meses = pd.date_range(base + pd.offsets.MonthBegin(), inicio - pd.offsets.MonthBegin(), freq="MS")
+    taxas = df_ipca.set_index("data")["valor"].reindex(meses).to_numpy(dtype=float)
+    if not np.isfinite(taxas).all() or np.any(taxas <= -100):
+        raise ValueError("IPCA mensal incompleto ou inválido para a conversão à data-base.")
+    return float(1 / np.prod(1 + taxas / 100))

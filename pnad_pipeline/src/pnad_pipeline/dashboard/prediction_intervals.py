@@ -60,7 +60,7 @@ def save(payload, folder, prefix):
     temp = path.with_suffix(".tmp")
     temp.write_bytes(content)
     os.replace(temp, path)
-    return {"arquivo": name, "sha256": digest, "version": VERSION}
+    return {"arquivo": name, "sha256": digest, "version": payload["version"]}
 
 
 def conformal_radius(observed_log, center_log, target=TARGET):
@@ -69,18 +69,32 @@ def conformal_radius(observed_log, center_log, target=TARGET):
         raise ValueError("Calibração exige vetores não vazios de igual tamanho.")
     if not np.isfinite(observed).all() or not np.isfinite(center).all() or not 0 < target < 1:
         raise ValueError("Calibração exige valores finitos e meta entre zero e um.")
-    rank = math.ceil((len(observed) + 1) * target)
-    if rank > len(observed):
+    return conformal_order(np.abs(observed - center), target)
+
+
+def conformal_order(scores, target=TARGET):
+    scores = np.asarray(scores, dtype=float)
+    if scores.ndim != 1 or not len(scores) or not np.isfinite(scores).all() or not 0 < target < 1:
+        raise ValueError("O quantil conformal exige escores finitos e uma meta entre zero e um.")
+    rank = math.ceil((len(scores) + 1) * target)
+    if rank > len(scores):
         raise ValueError("Amostra insuficiente para um raio finito com esta meta.")
-    scores = np.abs(observed - center)
     return float(np.partition(scores, rank - 1)[rank - 1]), rank
 
 
 def interval_metrics(observed_log, center_log, radius):
     y, center = np.asarray(observed_log, dtype=float), np.asarray(center_log, dtype=float)
-    if y.ndim != 1 or center.shape != y.shape or not len(y) or not np.isfinite(y).all() or not np.isfinite(center).all() or not np.isfinite(radius) or radius < 0:
+    if not np.isfinite(radius) or radius < 0:
         raise ValueError("Valores de avaliação ou raio inválidos.")
-    lower_log, upper_log = center - radius, center + radius
+    return bounds_metrics(y, center - radius, center + radius)
+
+
+def bounds_metrics(observed_log, lower_log, upper_log):
+    y, lower_log, upper_log = (np.asarray(values, dtype=float) for values in (observed_log, lower_log, upper_log))
+    if (y.ndim != 1 or lower_log.shape != y.shape or upper_log.shape != y.shape or not len(y)
+            or not all(np.isfinite(values).all() for values in (y, lower_log, upper_log))
+            or np.any(lower_log > upper_log)):
+        raise ValueError("Observações e limites ordenados precisam ser finitos e ter o mesmo tamanho positivo.")
     below, above = y < lower_log, y > upper_log
     widths = np.exp(upper_log) - np.exp(lower_log)
     if not np.isfinite(widths).all():
@@ -94,9 +108,16 @@ def interval_metrics(observed_log, center_log, radius):
 def evaluate_intervals(frame, center, radius, period):
     if period not in {"2024", "2025"} or not frame.Ano.astype(str).eq(period).all():
         raise ValueError("Ano da amostra incompatível com a etapa de avaliação.")
-    y = frame.log_salario_hora.to_numpy(dtype=float)
     center = np.asarray(center, dtype=float)
-    summary = interval_metrics(y, center, radius)
+    if not np.isfinite(radius) or radius < 0:
+        raise ValueError("Raio de avaliação inválido.")
+    return evaluate_bounds(frame, center - radius, center + radius, period)
+
+
+def evaluate_bounds(frame, lower, upper, period):
+    y = frame.log_salario_hora.to_numpy(dtype=float)
+    lower, upper = np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
+    summary = bounds_metrics(y, lower, upper)
     education = pd.cut(frame.Anos_de_Estudo, [-.001, 4, 8, 11, 16],
                        labels=["0–4 anos", "5–8 anos", "9–11 anos", "12 anos ou mais"]).astype("string").fillna("Sem informação")
     rows = []
@@ -108,7 +129,7 @@ def evaluate_intervals(frame, center, radius, period):
     for dimension, labels in labels_by_dimension.items():
         for group in sorted(pd.unique(labels)):
             mask = labels == group
-            result = interval_metrics(y[mask], center[mask], radius)
+            result = bounds_metrics(y[mask], lower[mask], upper[mask])
             enough = result["n"] >= MIN_GROUP
             row = {"dimensao": dimension, "grupo": str(group), "status": "ok" if enough else "insufficient",
                    **{k: v if enough or k == "n" else None for k, v in result.items()}}

@@ -196,6 +196,239 @@ No empilhamento de trimestres, a mesma UPA permanece agrupada ao longo do tempo 
 
 Os resultados ficam em **`data/processed/recoleta_ponderada/inferencia_amostral/`** para a série completa. Os arquivos `inferencial_m5_*.csv` incluem erros-padrão, p-valores e intervalos com o sufixo `desenho_pnad`, além do ajuste Benjamini–Hochberg do método principal. Os arquivos `perfil_idade_m5_*.csv` contêm a curva de salário-hora previsto para o perfil médio ponderado, com IC pontual pela covariância completa do desenho. O relatório e o resumo registram o domínio, o peso, a aproximação da variância e os diagnósticos. O dashboard interativo prioriza a nova base histórica ponderada e lê os resultados do M5 desse diretório após reiniciar o servidor. A ponderação não identifica causalidade.
 
+### Robustez do M5 a salários extremos
+
+```powershell
+python scripts/26_robustez_m5.py
+```
+
+O script compara o M5 nacional de 2013–2025 com o mesmo modelo após limitar o
+salário-hora real aos percentis 1 e 99 ponderados da amostra elegível. As duas
+versões usam os mesmos registros, controles, pesos V1028, UPAs e estratos. O CSV
+apresenta os contrastes padronizados de escolaridade (12 vs. 8 anos), formalidade
+e sexo, além da mudança entre versões em pontos percentuais.
+
+Os IC95% pontuais usam a linearização do desenho do M5. O intervalo da mudança
+usa o método delta com a covariância entre os ajustes. A variância mantém fixos
+os pontos de corte e as médias de covariáveis usadas nos contrastes. O CSV e o
+resumo JSON ficam em `data/processed/recoleta_ponderada/inferencia_amostral/robustez_m5/`.
+
+### Estabilidade anual do M5
+
+```powershell
+python scripts/27_estabilidade_m5.py
+```
+
+Um ajuste do M5 por ano completo usa a elegibilidade, os controles e os pesos
+V1028 da série histórica. Os contrastes de escolaridade, formalidade e sexo
+são avaliados na distribuição ponderada da série inteira, mantida como
+referência comum. A tabela traz diferenças percentuais e IC95% pontuais.
+
+A linearização por UPA e estrato estima a covariância conjunta entre os anos.
+O teste F de Wald compara o contraste em log entre todos os anos, com ajuste de
+Holm para os três testes. O perfil comum entra como fixo na inferência. A
+aproximação da variância e o tratamento de reclassificação de UPAs seguem o M5
+histórico. O CSV e o JSON ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/estabilidade_m5/`.
+
+### M5 com e sem efeitos fixos de UF
+
+```powershell
+python scripts/28_sensibilidade_uf_m5.py
+```
+
+O script ajusta as duas especificações na mesma amostra histórica ponderada,
+com o salário-hora original e um perfil de referência comum. A versão reduzida
+retira os indicadores de UF da regressão. A UF permanece na identificação de
+estratos e UPAs do desenho amostral. O CSV mostra os contrastes de escolaridade,
+formalidade e sexo, e a diferença em pontos percentuais calculada como sem UF
+menos com UF.
+
+Os IC95% pontuais tratam o perfil de referência como fixo. A linearização por
+UPA e estrato estima a covariância entre os dois ajustes. O intervalo da mudança
+usa o [método delta](https://r-survey.r-forge.r-project.org/pkgdown/docs/reference/svycontrast.html).
+O CSV e o JSON ficam em `data/processed/recoleta_ponderada/inferencia_amostral/sensibilidade_uf_m5/`.
+
+### M5 com e sem controles do emprego
+
+```powershell
+python scripts/29_sensibilidade_emprego_m5.py
+```
+
+A versão reduzida retira ocupação, setor de atividade, setor público,
+formalidade e as interações da escolaridade com setor público e formalidade.
+O contraste compara 12 e 8 anos de estudo na mesma amostra ponderada, com
+efeitos fixos de UF, ano e trimestre. A mudança em pontos percentuais é a
+estimativa reduzida menos a estimativa completa. Os IC95% pontuais usam o
+perfil de referência fixo e a covariância dos dois ajustes pelo desenho
+amostral. A tabela descreve a sensibilidade da associação aos controles.
+O CSV e o JSON ficam em `data/processed/recoleta_ponderada/inferencia_amostral/sensibilidade_emprego_m5/`.
+
+### M5 com salário-hora real e nominal
+
+```powershell
+python scripts/35_comparar_nominal_real_m5.py
+```
+
+O script lê a data-base registrada no Parquet e recalcula o fator trimestral
+da coleta com a série mensal SGS 433 do Banco Central. O log nominal resulta
+de subtrair o log desse fator do log real arquivado. As duas regressões usam
+os mesmos registros, pesos V1028 e controles do M5. A diferença é a estimativa
+nominal menos a real em pontos percentuais. O IC95% pareado usa a covariância
+dos ajustes por UPA dentro de estrato e trata o perfil de referência e o IPCA
+como fixos. O JSON registra os fatores usados. As saídas ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/nominal_real_m5/`.
+
+### Múltiplos testes do M5 e mercado de trabalho
+
+```powershell
+python scripts/36_multiplicidade_m5.py
+python scripts/37_mercado_trabalho.py
+python scripts/19_desigualdade_quantis.py --somente-distribuicao
+```
+
+O script 36 estima testes Wald-F para dez blocos de coeficientes do M5,
+com Holm na família de blocos identificados. Os três contrastes principais
+formam outra família, com IC95% simultâneos de Bonferroni e perfil ponderado
+tratado como fixo. As saídas ficam em `inferencia_amostral/multiplicidade_m5/`.
+A tabela principal do dashboard oferece Holm para a família completa de
+coeficientes identificados de cada ajuste, incluindo o intercepto, seguindo
+a família BH histórica. Arquivos anteriores são compatíveis, pois o ajuste
+é calculado sobre a tabela completa antes dos filtros de visualização.
+
+O script 37 usa a base consolidada completa para estimar participação,
+ocupação e desocupação entre 25 e 65 anos, por trimestre, Brasil,
+macroregião, sexo e cor/raça. Usa VD4001 e VD4002, pesos V1028 e IC95%
+pontuais por linearização de razões com cadastro completo de UPAs antes
+do domínio. Participação e ocupação têm a população do domínio como
+denominador. Desocupação tem a força de trabalho como denominador.
+As saídas em `inferencia_amostral/mercado_trabalho/` registram contagens,
+totais ponderados, exclusões e denominadores. O dashboard apresenta essas
+taxas na Visão geral. A faixa etária é diferente da população de 14 anos
+ou mais usada nas divulgações nacionais do IBGE.
+
+A opção `--somente-distribuicao` requer uma execução quantílica anterior e
+atualiza apenas a distribuição e Lorenz. Acrescenta Theil T ponderado,
+P50/P10, P90/P50 e participação dos 10% com maiores salários-hora.
+O topo usa exatamente 10% da massa V1028, fracionando o peso na fronteira.
+As medidas se referem ao salário-hora dos ocupados do domínio M5 e têm
+série trimestral por grupo. O Theil usa a convenção `0 log(0) = 0`.
+
+### Intervalos descritivos, coortes alternativas e Theil regional
+
+```powershell
+python scripts/38_incerteza_descritiva.py
+python scripts/39_sensibilidade_coortes.py
+python scripts/40_decompor_theil.py
+```
+
+O script 38 usa o salário-hora arquivado na base descritiva e o cadastro de
+UPAs da base completa, anterior aos filtros de domínio. Estima a média,
+P10, P50 e P90 por trimestre para Brasil e cinco macroregiões. A média usa
+linearização de razão e distribuição t. Os quantis seguem Woodruff com
+intervalo t da CDF no quantil e inversa empírica ponderada, preservando
+empates. Limites fora do suporte de probabilidade são indisponíveis.
+As faixas são pontuais. A API `/api/incerteza-descritiva` e o painel da
+Visão geral usam os arquivos em `inferencia_amostral/incerteza_descritiva/`.
+O domínio descritivo exige ocupação, renda e horas positivas e idade de
+25 a 65 anos. Os controles adicionais de elegibilidade do M5 definem
+a amostra das análises do pseudo-painel e do Theil regional.
+[Referência dos intervalos de quantis](https://r-survey.r-forge.r-project.org/pkgdown/docs/reference/svyquantile.html).
+
+O script 39 mantém a amostra salarial do M5 e compara as faixas históricas
+de nascimento, faixas de cinco anos deslocadas e faixas decenais. As
+bordas parciais preservam o suporte de 1947 a 2003 e os limites ficam
+registrados no JSON. Reestima as três especificações e os três limiares
+de n/Kish, totalizando 27 modelos. Cada célula recebe EP da média de
+log salário e da escolaridade média pelo desenho trimestral, além do
+IC95% da média geométrica. Esses EPs quantificam o erro amostral das
+médias e são diagnósticos. As regressões mantêm a inferência exploratória
+clusterizada por coorte e trimestre e não corrigem erro de mensuração.
+As saídas ficam em `inferencia_amostral/sensibilidade_coortes/` e a API
+`/api/sensibilidade-coortes` as apresenta na aba Associação e inferência.
+
+O script 40 usa os totais ponderados de salário-hora por macroregião.
+O Theil nacional soma a parcela dentro das regiões e a parcela entre
+regiões. O componente interno pondera cada Theil regional pela participação
+regional na soma ponderada dos salários-hora. Contribuições regionais
+individuais ao componente entre podem ser negativas, enquanto a soma é
+não negativa. Os totais são conferidos pela identidade aditiva. A API
+`/api/decomposicao-theil` lê as saídas em `inferencia_amostral/decomposicao_theil/`
+para a aba Desigualdade salarial. Esta decomposição é descritiva e os
+componentes não recebem intervalos de confiança.
+
+### Multicolinearidade do M5
+
+```powershell
+python scripts/30_multicolinearidade_m5.py
+```
+
+Na mesma amostra V1028 do M5, o diagnóstico centra e padroniza os termos
+estimáveis da regressão. Para cada bloco calcula o fator generalizado de
+inflação de variância (GVIF) e `GVIF^(1/(2d))`, com `d` igual ao número de
+colunas estimáveis do bloco. O bloco de escolaridade inclui as interações e
+seus termos principais. A versão reduzida usa as mesmas exclusões do script 29.
+[Fox e Monette (1992)](https://doi.org/10.1080/01621459.1992.10475190).
+
+O número de condição é a razão entre o maior e o menor valor singular da
+matriz de regressoras ponderada e padronizada. As omissões seguem o critério
+de posto do M5. O CSV e o JSON ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/multicolinearidade_m5/`.
+
+### Resíduos do M5 ponderado
+
+```powershell
+python scripts/31_residuos_m5.py
+```
+
+O script ajusta o M5 completo e calcula o resíduo como log do salário-hora
+observado menos log do ajustado. A média e o desvio-padrão descritivo usam
+V1028 na própria amostra de ajuste. Os decis nacionais são definidos pela
+distribuição ponderada dos ajustes, com empates agrupados. A tabela exibe os
+cortes em reais por hora a preços de janeiro de 2026.
+
+Os efeitos fixos de UF centram o resíduo médio em cada macrorregião por
+construção. Os desvios-padrão mostram como a dispersão varia entre regiões
+e faixas de salário-hora estimado. O CSV e o JSON ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/residuos_m5/`.
+[NIST · diagnóstico da dispersão dos resíduos](https://itl.nist.gov/div898/handbook/pmd/section4/pmd442.htm).
+
+### Influência de observações no M5 ponderado
+
+```powershell
+python scripts/32_influencia_m5.py
+```
+
+O script usa a atualização exata de mínimos quadrados ponderados para
+retirar uma linha por vez. Os contrastes de escolaridade, formalidade e sexo
+usam o perfil de referência da amostra completa. A mudança em pontos
+percentuais é a estimativa da exclusão menos a estimativa completa. Exclusões
+com alavancagem numericamente próxima de 1 ficam separadas na contagem.
+[SAS · diagnósticos de influência em regressão linear](https://support.sas.com/documentation/onlinedoc/stat/132/reg.pdf).
+
+O 1% com maior mudança absoluta é selecionado separadamente para cada
+contraste, com empates preservados e mudanças nulas fora da seleção. A
+concentração é calculada por contagem de registros. Os decis ponderados do
+salário-hora estimado seguem o diagnóstico de resíduos. A saída contém apenas
+resumos nacionais e contagens por decil ou macrorregião. O CSV e o JSON ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/influencia_m5/`.
+
+### Dispersão dos resíduos nos extremos do M5
+
+```powershell
+python scripts/33_dispersao_m5.py
+```
+
+Compara o desvio-padrão ponderado dos resíduos em log de D1 e D10 com o
+desvio-padrão dos registros de D5 e D6 reunidos. As duas diferenças e as
+variações relativas têm IC95% pontuais. A linearização por UPA dentro de
+estrato usa a covariância conjunta, inclui o reajuste dos coeficientes do M5
+e trata a atribuição às faixas como fixa. A variação relativa usa o método
+delta na escala do log da razão. [Referência do método delta](https://r-survey.r-forge.r-project.org/pkgdown/docs/reference/svycontrast.html).
+
+O CSV e o JSON ficam em
+`data/processed/recoleta_ponderada/inferencia_amostral/dispersao_m5/`.
+
 ### Retorno associado à escolaridade
 
 Para comparar formas da escolaridade e testar diferenças de perfil com os mesmos pesos e a mesma amostra:
@@ -304,13 +537,18 @@ python scripts/21_decomposicao_oaxaca.py `
   --upa-multiestrato separar
 ```
 
-Usa todas as observações elegíveis do M5 histórico com V1028 para cinco pares:
+Usa todas as observações elegíveis do M5 histórico com V1028 para nove pares:
 mulheres versus homens, e pessoas pretas, amarelas, pardas e indígenas versus
-brancas. Para cada par, estima a referência pooled com indicador de grupo,
+brancas, e quatro macroregiões versus Sudeste. Para cada par, estima a referência pooled com indicador de grupo,
 conforme [Jann (2008)](https://repec.ethz.ch/ets/papers/jann_oaxaca.pdf).
 O vetor de controles comuns mantém a família M5, retirando a variável definidora
 do par e sua interação com escolaridade. O indicador entra somente no ajuste
 pooled. A diferença é sempre grupo menos referência.
+
+Nas comparações regionais, todas as indicadoras de UF são retiradas dos
+controles, pois elas determinam a macroregião e impediriam identificar o
+indicador do grupo. Permanecem cor/raça, sexo, escolaridade e os demais
+controles do M5. As cinco comparações demográficas mantêm sua especificação.
 
 O total D é a diferença entre médias ponderadas de log do salário-hora;
 a parcela explicada E é a diferença de médias dos controles multiplicada
@@ -366,6 +604,22 @@ sem smearing; a extensão abaixo avalia também a conversão corrigida. Diferen�
 erro entre grupos também dependem de suas distribuições salariais. Os
 diagnósticos não identificam causalidade, não calibram intervalos de previsão
 e não validam projeções futuras. Filtros populacionais não alteram essa avaliação.
+
+### Comparação temporal do M5 ponderado em reais e em log
+
+```powershell
+python scripts/34_comparar_escala_m5.py
+```
+
+O M5 temporal usa os mesmos controles do M5 histórico, com tendência linear
+de ano centrada em 2013 no lugar dos indicadores anuais. Os dois ajustes por
+mínimos quadrados ponderados usam 2013–2023. O fator global de Duan é a média
+ponderada de `exp(y_log - previsto_log)` em 2024. [Duan (1983)](https://www.jstor.org/stable/2288126).
+
+As três previsões são avaliadas nos mesmos registros de 2025. MAE, RMSE e viés
+(`previsto − observado`) usam pesos V1028 e reais por hora a preços de janeiro
+de 2026. Os decis nacionais são definidos pelo salário-hora observado no teste.
+O CSV e o JSON ficam em `data/processed/recoleta_ponderada/previsao_m5/`.
 
 ### Correção global de Duan e comparação temporal
 

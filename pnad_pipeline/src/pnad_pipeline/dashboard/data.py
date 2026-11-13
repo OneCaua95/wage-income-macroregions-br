@@ -12,6 +12,7 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
 from pnad_pipeline.analise.amostragem import media_ponderada, quantis_ponderados, validar_desenho
+from pnad_pipeline.analise.regressao.multiplicidade import ajustar_holm
 
 ROOT = Path(__file__).resolve().parents[4]
 PROCESSED = ROOT / "pnad_pipeline" / "data" / "processed"
@@ -26,7 +27,22 @@ HISTORICO_PSEUDO = HISTORICO_INFERENCE / "pseudopainel"
 HISTORICO_INEQUALITY = HISTORICO_INFERENCE / "desigualdade"
 HISTORICO_GROUP_GAPS = HISTORICO_INFERENCE / "diferencas_grupos"
 HISTORICO_OAXACA = HISTORICO_INFERENCE / "oaxaca"
-VERSION = "dashboard-2.9"
+HISTORICO_ROBUSTEZ = HISTORICO_INFERENCE / "robustez_m5"
+HISTORICO_ESTABILIDADE = HISTORICO_INFERENCE / "estabilidade_m5"
+HISTORICO_SENSIBILIDADE_UF = HISTORICO_INFERENCE / "sensibilidade_uf_m5"
+HISTORICO_SENSIBILIDADE_EMPREGO = HISTORICO_INFERENCE / "sensibilidade_emprego_m5"
+HISTORICO_MULTICOLINEARIDADE = HISTORICO_INFERENCE / "multicolinearidade_m5"
+HISTORICO_RESIDUOS = HISTORICO_INFERENCE / "residuos_m5"
+HISTORICO_INFLUENCIA = HISTORICO_INFERENCE / "influencia_m5"
+HISTORICO_DISPERSAO = HISTORICO_INFERENCE / "dispersao_m5"
+HISTORICO_PREVISAO_M5 = HISTORICO_PONDERADO.parent / "previsao_m5"
+HISTORICO_NOMINAL_REAL = HISTORICO_INFERENCE / "nominal_real_m5"
+HISTORICO_MULTIPLICIDADE = HISTORICO_INFERENCE / "multiplicidade_m5"
+HISTORICO_MERCADO = HISTORICO_INFERENCE / "mercado_trabalho"
+HISTORICO_INCERTEZA = HISTORICO_INFERENCE / "incerteza_descritiva"
+HISTORICO_SENSIBILIDADE_COORTES = HISTORICO_INFERENCE / "sensibilidade_coortes"
+HISTORICO_THEIL = HISTORICO_INFERENCE / "decomposicao_theil"
+VERSION = "dashboard-2.21"
 FILTERS = {
     "regiao": "Regiao", "uf": "UF", "sexo": "Sexo_Desc", "cor": "Cor_Desc",
     "escolaridade": "Escolaridade_Nivel", "idade": "Faixa_Etaria",
@@ -434,7 +450,11 @@ def inference(source, period, filters):
     age_profile = pd.read_csv(profile_path).to_dict("records") if profile_path.exists() else []
     summary = read_json(folder / "resumo_inferencia_m5.json")
     rows, omitted = [], []
-    for r in pd.read_csv(path).to_dict("records"):
+    coeficientes = pd.read_csv(path)
+    coeficientes["p_valor_principal_holm"] = ajustar_holm(
+        coeficientes["p_valor_desenho_pnad"].where(coeficientes["identificavel"])
+    )
+    for r in coeficientes.to_dict("records"):
         if not r.get("identificavel", False):
             omitted.append(r["variavel"])
             continue
@@ -445,7 +465,7 @@ def inference(source, period, filters):
                      "coeficiente":beta, "associacao_pct":percent,
                      "erro_padrao":r["erro_padrao_desenho_pnad"], "ic_inferior":r["ic_inferior_desenho_pnad"],
                      "ic_superior":r["ic_superior_desenho_pnad"], "p_valor":r["p_valor_desenho_pnad"],
-                     "p_bh":r.get("p_valor_principal_bh")})
+                     "p_bh":r.get("p_valor_principal_bh"), "p_holm":r["p_valor_principal_holm"]})
     model = next((m for m in summary.get("modelos",[]) if m["modelo"] == region), {})
     metodo = (
         "Linearização por UPA dentro de estrato; IC com distribuição t e gl = UPAs − estratos. "
@@ -746,6 +766,179 @@ def oaxaca(source, period, filters):
                        "ponderacao": "V1028", "desenho": "UPA dentro de estrato; linearização conjunta das médias e coeficientes",
                        "versao": summary.get("versao"), "processado_em": summary.get("processado_em"),
                        "resultado": file_info(results_path), "filtros": {},
+                       "filtros_globais_nao_aplicados": filters, "periodo_global_nao_aplicado": period},
+    })
+
+
+def _comparacao_m5(source, period, filters, path, script, conjunto, *, metodo="Linearização conjunta por UPA dentro de estrato"):
+    if source != "historico":
+        return {"status": "unavailable", "message": "Selecione a série histórica para consultar a comparação do M5 ponderado."}
+    report = read_json(path)
+    if report.get("status") != "ok":
+        return {"status": "unavailable", "message": f"Comparação ainda não processada. Execute scripts/{script} na pasta pnad_pipeline."}
+    return clean({
+        "status": "ok", "periodo": report["periodo"],
+        "summary": {key: value for key, value in report.items() if key not in {"rows", "notas"}},
+        "rows": report["rows"],
+        "notes": [*report["notas"], "Esta comparação usa o Brasil e toda a série histórica. O trimestre e os filtros globais servem às consultas descritivas."],
+        "provenance": {"conjunto": conjunto, "periodo": report["periodo"],
+                       "ponderacao": report["ponderacao"], "desenho": metodo,
+                       "versao": report["versao"], "processado_em": report["processado_em"],
+                       "resultado": file_info(path), "filtros": {},
+                       "filtros_globais_nao_aplicados": filters, "periodo_global_nao_aplicado": period},
+    })
+
+
+def robustez_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_ROBUSTEZ / "resumo_robustez_m5.json",
+        "26_robustez_m5.py", "Robustez do M5 · série histórica ponderada",
+    )
+
+
+def sensibilidade_uf_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_SENSIBILIDADE_UF / "resumo_sensibilidade_uf_m5.json",
+        "28_sensibilidade_uf_m5.py", "M5 com e sem efeitos fixos de UF",
+    )
+
+
+def sensibilidade_emprego_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_SENSIBILIDADE_EMPREGO / "resumo_sensibilidade_emprego_m5.json",
+        "29_sensibilidade_emprego_m5.py", "Escolaridade com e sem controles do emprego",
+    )
+
+
+def nominal_real_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_NOMINAL_REAL / "resumo_nominal_real_m5.json",
+        "35_comparar_nominal_real_m5.py", "M5 com salário-hora real e nominal",
+    )
+
+
+def multiplicidade_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_MULTIPLICIDADE / "resumo_multiplicidade_m5.json",
+        "36_multiplicidade_m5.py", "Testes conjuntos e intervalos simultâneos do M5",
+    )
+
+
+def mercado_trabalho(source, period, filters):
+    if source != "historico":
+        return {"status": "unavailable", "message": "Selecione a série histórica ponderada para consultar as taxas de mercado de trabalho."}
+    result = _comparacao_m5(
+        source, period, filters, HISTORICO_MERCADO / "resumo_mercado_trabalho.json",
+        "37_mercado_trabalho.py", "Mercado de trabalho · população de 25 a 65 anos",
+        metodo="Linearização trimestral de razões por UPA dentro de estrato",
+    )
+    if result["status"] == "ok":
+        result["all_rows"] = result["rows"]
+        result["rows"] = [row for row in result["all_rows"] if row["trimestre"] == period]
+        result["periodo_selecionado"] = period
+        result["notes"] = result["notes"][:-1] + ["O seletor de período escolhe o trimestre da tabela. Os filtros demográficos globais não são aplicados. Use os grupos deste painel."]
+        result["provenance"]["periodo_selecionado"] = period
+    return result
+
+
+def _serie_indicadores(source, period, filters, pasta, arquivo, script, conjunto, metodo):
+    if source != "historico":
+        return {"status": "unavailable", "message": "Selecione a série histórica ponderada para consultar estes indicadores."}
+    result = _comparacao_m5(source, period, filters, pasta / arquivo, script, conjunto, metodo=metodo)
+    if result["status"] == "ok":
+        result["all_rows"] = result["rows"]
+        result["rows"] = [row for row in result["all_rows"] if row["trimestre"] == period]
+        result["periodo_selecionado"] = period
+        result["notes"] = result["notes"][:-1] + ["O período escolhe o trimestre da tabela. Os filtros demográficos globais não são aplicados. Use os seletores deste painel."]
+        result["provenance"]["periodo_selecionado"] = period
+    return result
+
+
+def incerteza_descritiva(source, period, filters):
+    return _serie_indicadores(
+        source, period, filters, HISTORICO_INCERTEZA, "resumo_incerteza_descritiva.json",
+        "38_incerteza_descritiva.py", "Incerteza do salário-hora · Brasil e macroregiões",
+        "Linearização da média e intervalos de Woodruff para quantis por trimestre",
+    )
+
+
+def decomposicao_theil(source, period, filters):
+    return _serie_indicadores(
+        source, period, filters, HISTORICO_THEIL, "resumo_decomposicao_theil.json",
+        "40_decompor_theil.py", "Theil do salário-hora · dentro e entre macroregiões",
+        "Decomposição descritiva aditiva ponderada por V1028",
+    )
+
+
+def sensibilidade_coortes(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_SENSIBILIDADE_COORTES / "resumo_sensibilidade_coortes.json",
+        "39_sensibilidade_coortes.py", "Incerteza das médias e sensibilidade do pseudo-painel",
+        metodo="Médias por UPA/estrato em cada trimestre e regressões exploratórias por coorte/trimestre",
+    )
+
+
+def multicolinearidade_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_MULTICOLINEARIDADE / "resumo_multicolinearidade_m5.json",
+        "30_multicolinearidade_m5.py", "Multicolinearidade do M5 ponderado",
+        metodo="Matriz de regressoras centrada e padronizada com V1028",
+    )
+
+
+def residuos_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_RESIDUOS / "resumo_residuos_m5.json",
+        "31_residuos_m5.py", "Resíduos do M5 ponderado",
+        metodo="Estatísticas descritivas ponderadas por V1028 na amostra de ajuste",
+    )
+
+
+def dispersao_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_DISPERSAO / "resumo_dispersao_m5.json",
+        "33_dispersao_m5.py", "Dispersão dos resíduos do M5 por faixa salarial",
+        metodo="Linearização conjunta por UPA dentro de estrato, com faixas fixas",
+    )
+
+
+def influencia_m5(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_INFLUENCIA / "resumo_influencia_m5.json",
+        "32_influencia_m5.py", "Influência individual no M5 ponderado",
+        metodo="Exclusão individual por mínimos quadrados ponderados com V1028",
+    )
+
+
+def comparacao_escala_m5():
+    path = HISTORICO_PREVISAO_M5 / "resumo_escala_m5.json"
+    report = read_json(path)
+    if report.get("status") != "ok":
+        return {"status": "unavailable", "message": "Execute scripts/34_comparar_escala_m5.py na pasta pnad_pipeline para gerar a comparação."}
+    return clean({
+        "status": "ok", "rows": report["rows"], "notes": report["notas"],
+        "summary": {key: value for key, value in report.items() if key not in {"rows", "notas"}},
+        "provenance": {"conjunto": "Comparação temporal de escala do M5 ponderado", "periodo": report["periodo"],
+                       "ponderacao": report["ponderacao"], "versao": report["versao"],
+                       "processado_em": report["processado_em"], "resultado": file_info(path), "filtros": {}},
+    })
+
+
+def estabilidade_m5(source, period, filters):
+    """Contrastes anuais nacionais na série histórica ponderada."""
+    if source != "historico":
+        return {"status": "unavailable", "message": "Selecione a série histórica para consultar as estimativas anuais do M5 ponderado."}
+    path = HISTORICO_ESTABILIDADE / "resumo_estabilidade_m5.json"
+    report = read_json(path)
+    if report.get("status") != "ok":
+        return {"status": "unavailable", "message": "Análise ainda não processada. Execute scripts/27_estabilidade_m5.py na pasta pnad_pipeline."}
+    return clean({
+        "status": "ok", "periodo": report["periodo"], "rows": report["rows"], "testes": report["testes"],
+        "notes": [*report["notas"], "O gráfico usa a série nacional completa. O trimestre e os filtros globais servem às consultas descritivas."],
+        "provenance": {"conjunto": "Estabilidade anual do M5 ponderado", "periodo": report["periodo"],
+                       "ponderacao": report["ponderacao"], "desenho": "Linearização conjunta por UPA dentro de estrato",
+                       "versao": report["versao"], "processado_em": report["processado_em"],
+                       "resultado": file_info(path), "filtros": {},
                        "filtros_globais_nao_aplicados": filters, "periodo_global_nao_aplicado": period},
     })
 

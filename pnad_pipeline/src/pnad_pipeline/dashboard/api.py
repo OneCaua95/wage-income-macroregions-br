@@ -122,6 +122,76 @@ def oaxaca(request: Request):
     return data.oaxaca(*selection(request))
 
 
+@app.get("/api/robustez-m5")
+def robustez_m5(request: Request):
+    return data.robustez_m5(*selection(request))
+
+
+@app.get("/api/estabilidade-m5")
+def estabilidade_m5(request: Request):
+    return data.estabilidade_m5(*selection(request))
+
+
+@app.get("/api/sensibilidade-uf-m5")
+def sensibilidade_uf_m5(request: Request):
+    return data.sensibilidade_uf_m5(*selection(request))
+
+
+@app.get("/api/sensibilidade-emprego-m5")
+def sensibilidade_emprego_m5(request: Request):
+    return data.sensibilidade_emprego_m5(*selection(request))
+
+
+@app.get("/api/nominal-real-m5")
+def nominal_real_m5(request: Request):
+    return data.nominal_real_m5(*selection(request))
+
+
+@app.get("/api/multiplicidade-m5")
+def multiplicidade_m5(request: Request):
+    return data.multiplicidade_m5(*selection(request))
+
+
+@app.get("/api/mercado-trabalho")
+def mercado_trabalho(request: Request):
+    return data.mercado_trabalho(*selection(request))
+
+
+@app.get("/api/incerteza-descritiva")
+def incerteza_descritiva(request: Request):
+    return data.incerteza_descritiva(*selection(request))
+
+
+@app.get("/api/decomposicao-theil")
+def decomposicao_theil(request: Request):
+    return data.decomposicao_theil(*selection(request))
+
+
+@app.get("/api/sensibilidade-coortes")
+def sensibilidade_coortes(request: Request):
+    return data.sensibilidade_coortes(*selection(request))
+
+
+@app.get("/api/multicolinearidade-m5")
+def multicolinearidade_m5(request: Request):
+    return data.multicolinearidade_m5(*selection(request))
+
+
+@app.get("/api/residuos-m5")
+def residuos_m5(request: Request):
+    return data.residuos_m5(*selection(request))
+
+
+@app.get("/api/influencia-m5")
+def influencia_m5(request: Request):
+    return data.influencia_m5(*selection(request))
+
+
+@app.get("/api/dispersao-m5")
+def dispersao_m5(request: Request):
+    return data.dispersao_m5(*selection(request))
+
+
 class Profile(BaseModel):
     perfil: dict
 
@@ -159,6 +229,11 @@ def prediction_interval(body: Profile):
 @app.get("/api/comparacao-intervalos")
 def prediction_interval_comparison():
     return get_comparison()
+
+
+@app.get("/api/comparacao-escala-m5")
+def comparacao_escala_m5():
+    return data.comparacao_escala_m5()
 
 
 app.mount("/", StaticFiles(directory=data.ROOT / "frontend",html=True),name="frontend")

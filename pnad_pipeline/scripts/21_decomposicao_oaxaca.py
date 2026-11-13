@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decomposição Oaxaca–Blinder ponderada por sexo e cor/raça.
+"""Decomposição Oaxaca–Blinder ponderada por sexo, cor/raça e macroregião.
 
 Referência: coeficientes pooled sobre cada par, incluindo indicador do grupo
 como controle adicional (Jann, 2008). Usa o domínio elegível do M5 histórico.
@@ -35,6 +35,9 @@ COMPARACOES = [
     {"id": "sexo_2_1", "coluna": "Sexo", "codigo": 2, "referencia_codigo": 1, "grupo": "Mulheres", "referencia": "Homens", "rotulo": "Mulheres vs homens"},
     *[{"id": f"cor_{codigo}_1", "coluna": "Cor", "codigo": codigo, "referencia_codigo": 1, "grupo": nome, "referencia": "Branca", "rotulo": f"{nome} vs branca"}
       for codigo, nome in [(2, "Preta"), (3, "Amarela"), (4, "Parda"), (5, "Indígena")]],
+    *[{"id": f"regiao_{M5.slug(regiao)}_sudeste", "coluna": "Regiao", "codigo": regiao,
+       "referencia_codigo": "Sudeste", "grupo": regiao, "referencia": "Sudeste", "rotulo": f"{regiao} vs Sudeste"}
+      for regiao in M5.MACROREGIOES if regiao != "Sudeste"],
 ]
 COMPONENTES = [("total", "Diferença total"), ("explicada", "Parcela explicada"), ("nao_explicada", "Parcela não explicada")]
 
@@ -57,6 +60,8 @@ def preparar_modelos():
         # A variável definidora dos grupos não é uma característica explicativa.
         # Também se retira sua interação para obter inclinações pooled comuns.
         excluir = {"Sexo_Dummy", "Estudo_x_Sexo_Dummy"} if item["coluna"] == "Sexo" else set(M5.CORES.values())
+        if item["coluna"] == "Regiao":
+            excluir = {nome for nome in nomes if nome.startswith("UF_")}
         indices = np.array([i for i, nome in enumerate(nomes) if nome not in excluir])
         k = len(indices)
         modelos.append({
@@ -82,7 +87,7 @@ def executar(args):
     modelos = preparar_modelos()
     periodos = set()
     n_elegiveis = 0
-    print("Primeira passada: médias e cinco modelos pooled ponderados", flush=True)
+    print(f"Primeira passada: médias e {len(modelos)} modelos pooled ponderados", flush=True)
     for n_lote, batch in enumerate(M5.iterar_lotes(args.entrada, args.batch_size), 1):
         desenho.registrar(batch.to_pandas())
         df = M5.normalizar_lote(batch)
@@ -166,7 +171,7 @@ def executar(args):
                            "estimativa_log": valor, "erro_padrao_log": se,
                            "ic_inferior_log": float(valor - critico * se), "ic_superior_log": float(valor + critico * se)})
     resumo = {
-        "status": "ok", "versao": "oaxaca-1.0", "periodo": "2013–2025 (empilhado)", "n_periodos": len(periodos),
+        "status": "ok", "versao": "oaxaca-1.1", "periodo": "2013–2025 (empilhado)", "n_periodos": len(periodos),
         "primeiro_periodo": "%dT%d" % min(periodos), "ultimo_periodo": "%dT%d" % max(periodos),
         "processado_em": datetime.now(timezone.utc).isoformat(),
         "entrada": {"arquivo": args.entrada.name, "bytes": args.entrada.stat().st_size},
@@ -176,7 +181,7 @@ def executar(args):
         "n_upas_multiestrato": len(desenho.upas_multiestrato), "n_estratos_upa_unica": sum(len(ids) == 1 for ids in desenho.estratos.values()),
         "metodo": "Oaxaca–Blinder em duas parcelas; referência pooled com indicador de grupo em cada par (Jann, 2008).",
         "formula": "D = média(log salário)_grupo − média(log salário)_referência; E = (média(X)_grupo − média(X)_referência)' beta_pooled; U = D − E.",
-        "controles": "Família M5: idade, idade², escolaridade categórica, formalidade, setor público, setor, ocupação, UF, ano, trimestre e interações de estudo com formalidade e setor público. Em sexo, excluem-se sexo e sua interação dos controles comuns. Em cor, retiram-se as indicadoras de cor e mantém-se sexo e sua interação com estudo. O indicador do grupo entra apenas no ajuste pooled.",
+        "controles": "Família M5: idade, idade², escolaridade categórica, formalidade, setor público, setor, ocupação, UF, ano, trimestre e interações de estudo com formalidade e setor público. Em sexo, excluem-se sexo e sua interação dos controles comuns. Em cor, retiram-se as indicadoras de cor. Nas comparações regionais, o Sudeste é a referência e retiram-se todas as indicadoras de UF, pois a UF determina a macroregião. Cor e sexo com sua interação permanecem nesses ajustes. O indicador do grupo entra apenas no ajuste pooled.",
         "variancia": "Scores conjuntos de médias e coeficientes, linearização por UPA dentro de estrato; IC pontual t com gl = UPAs − estratos. Cadastro completo antes do domínio, aproximação com reposição, sem FPC ou recalibração. A covariância entre versões da UPA reclassificada não é estimada; rotação e renovação amostral limitam a aproximação temporal.",
         "interpretacao": "A parcela não explicada não é uma medida automática de discriminação nem de causalidade. Inclui fatores não observados e depende dos controles e da referência. Formalidade, setor e ocupação podem mediar diferenças; a parcela explicada não é uma atribuição causal.",
         "unidade": "Log do salário-hora real, a preços de janeiro/2026. Componentes somam em log; seus percentuais exponenciados não somam.",

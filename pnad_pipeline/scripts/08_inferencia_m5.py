@@ -51,6 +51,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from pnad_pipeline.analise.amostragem import (
     COLUNAS_DESENHO, LinearizacaoUPA, exigir_colunas_desenho, pesos_amostrais, validar_desenho,
 )
+from pnad_pipeline.analise.regressao.multiplicidade import ajustar_holm
 
 SETORES = {
     2: "Setor_Industria_Geral", 3: "Setor_Construcao", 4: "Setor_Comercio",
@@ -401,6 +402,8 @@ def resultados_coeficientes(modelo: ResultadoModelo, nivel_confianca: float) -> 
     principal = "desenho_pnad"
     dados["significante_5pct_principal"] = dados["p_valor_desenho_pnad"] < 0.05
     dados["p_valor_principal_bh"] = ajustar_bh(dados["p_valor_desenho_pnad"])
+    dados["p_valor_principal_holm"] = ajustar_holm(dados["p_valor_desenho_pnad"])
+    dados["significante_5pct_principal_holm"] = dados["p_valor_principal_holm"] < 0.05
     dados["significante_5pct_principal_bh"] = dados["p_valor_principal_bh"] < 0.05
     dados["significante_5pct_2vias"] = dados["p_valor_cluster_2vias"] < 0.05
     dados["p_valor_cluster_2vias_bh"] = ajustar_bh(dados["p_valor_cluster_2vias"])

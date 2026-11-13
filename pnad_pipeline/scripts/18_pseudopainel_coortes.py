@@ -49,12 +49,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def labels_coortes() -> dict[int, str]:
-    edges = M5.BIRTH_BINS
-    return {i: f"{edges[i] if i == 0 else edges[i] + 1}–{edges[i+1]}" for i in range(len(edges)-1)}
+def labels_coortes(birth_bins=None) -> dict[int, str]:
+    edges = M5.BIRTH_BINS if birth_bins is None else birth_bins
+    return {i: f"{max(edges[i], 1947) if i == 0 else edges[i] + 1}–{edges[i+1]}" for i in range(len(edges)-1)}
 
 
-def agregar_lote(batch: pd.DataFrame) -> pd.DataFrame:
+def agregar_lote(batch: pd.DataFrame, birth_bins=None) -> pd.DataFrame:
     df = M5.normalizar_lote(batch)
     if df.empty:
         return pd.DataFrame()
@@ -62,7 +62,8 @@ def agregar_lote(batch: pd.DataFrame) -> pd.DataFrame:
         pd.to_numeric(df["Ano_Nascimento"], errors="coerce").between(1947, 2003),
         df["Ano"] - df["Idade"],
     )
-    band = pd.cut(birth, bins=M5.BIRTH_BINS, labels=False, include_lowest=True).astype(int)
+    edges = M5.BIRTH_BINS if birth_bins is None else birth_bins
+    band = pd.cut(birth, bins=edges, labels=False, include_lowest=True).astype(int)
     df["coorte_id"] = df["Sexo"].astype(int) * 100 + band
     df["trimestre_id"] = df["Ano"].astype(int) * 4 + df["Trimestre"].astype(int) - 1
     df["w"] = pesos_amostrais(df)
@@ -92,11 +93,11 @@ def agregar_lote(batch: pd.DataFrame) -> pd.DataFrame:
     return grouped
 
 
-def montar_cells(partes: list[pd.DataFrame]) -> pd.DataFrame:
+def montar_cells(partes: list[pd.DataFrame], birth_bins=None) -> pd.DataFrame:
     totals = pd.concat(partes, ignore_index=True).groupby(
         ["coorte_id", "trimestre_id"], observed=True, sort=True
     ).sum(numeric_only=True).reset_index()
-    bands = labels_coortes()
+    bands = labels_coortes(birth_bins)
     totals["sexo_codigo"] = totals["coorte_id"] // 100
     totals["faixa_nascimento_codigo"] = totals["coorte_id"] % 100
     totals["sexo"] = totals["sexo_codigo"].map({1: "Homens", 2: "Mulheres"})

@@ -51,11 +51,40 @@ permitem tentar novamente.
 - Previsão com pipeline scikit-learn completo exportado, validação dos campos,
   variáveis derivadas consistentes e métricas próprias da nova execução.
 - M5 ponderado de 2025T4 e da série histórica 2013–2025, geral ou por
-  macroregião, com coeficientes, referências, IC95%, erros-padrão, p e ajuste BH.
+  macroregião, com coeficientes, referências, IC95%, erros-padrão, p e ajustes BH e Holm.
+- Testes conjuntos de dez blocos do M5 histórico e IC95% simultâneos de
+  Bonferroni para os três contrastes de escolaridade, formalidade e sexo.
+- Taxas trimestrais de participação, ocupação e desocupação entre 25 e 65 anos
+  na Visão geral, com grupos locais, IC95% pelo desenho e CSV da série completa.
+- Theil T, participação dos 10% com maiores salários e razões P50/P10 e
+  P90/P50 na aba Desigualdade salarial, com seletor da série temporal e CSV.
+- IC95% trimestrais da média, mediana, P10 e P90 do salário-hora na Visão
+  geral, para Brasil e macroregiões, com faixa no gráfico e exportação completa.
+- Incerteza das médias das coortes e sensibilidade a três definições de
+  nascimento, três limiares de tamanho e três especificações na aba Associação.
+- Decomposição do Theil em parcelas dentro e entre macroregiões, com série
+  trimestral, contribuições regionais e CSV na aba Desigualdade salarial.
+- Robustez do M5 nacional ao limitar salários-hora nos percentis ponderados 1
+  e 99 da série histórica. A aba Associação e inferência mostra os três
+  contrastes, IC95% em cada versão, mudanças pareadas e exportação CSV.
+- Estabilidade anual do M5 nacional na mesma aba, com seletor de contraste,
+  gráfico de IC95%, teste de igualdade entre anos, tabela e CSV completo.
+- Comparação do M5 com e sem efeitos fixos de UF na mesma amostra histórica,
+  com os três contrastes, mudanças em pontos percentuais, IC95% e CSV.
+- Comparação da diferença entre 12 e 8 anos de estudo com e sem controles do
+  emprego na mesma amostra histórica, com mudança pareada, IC95% e CSV.
+- Diagnóstico de multicolinearidade na mesma aba, com GVIF ajustado por bloco
+  e número de condição do M5 completo e sem os controles do emprego.
+- Resíduos ponderados do M5 por decis nacionais do salário-hora estimado e por
+  macrorregião, com gráficos de média e desvio-padrão, tabela e CSV.
+- Diferenças de dispersão dos resíduos entre os decis extremos e D5–D6
+  reunidos, com IC95% pelo desenho amostral e exportação CSV.
+- Influência de exclusões individuais nos contrastes de escolaridade, formalidade
+  e sexo, com concentração dos casos por decil estimado ou macrorregião.
 - Perfil de idade do salário-hora previsto pelo M5, com faixa de confiança pelo
   desenho amostral e exportação CSV; a composição das demais variáveis fica fixa
   no perfil médio ponderado do recorte.
-- Decomposição Oaxaca–Blinder por sexo e cor/raça na série histórica, com
+- Decomposição Oaxaca–Blinder por sexo, cor/raça e macroregião na série histórica, com
   parcelas total, explicada e não explicada em log, IC95% e exportações CSV/JSON.
 - Diagnóstico da previsão no teste de 2025: MAE, RMSE, viés e contagens por
   macroregião, sexo, escolaridade e decis de salário observado, em reais ou log.
@@ -129,6 +158,11 @@ Formalidade, setor e ocupação podem mediar as diferenças, por isso a parcela
 explicada também não é uma atribuição causal. O seletor interno escolhe o par;
 período e filtros globais não reestimam esta análise fixa de 2013–2025.
 
+**Salário-hora nominal e real:** a aba Associação e inferência compara
+escolaridade, formalidade e sexo na série histórica ponderada. A tabela e o
+CSV incluem a mudança nominal menos real e o IC95% pareado. Gere os resultados
+com `python pnad_pipeline/scripts/35_comparar_nominal_real_m5.py`.
+
 **Execução oficial 2025T4:** `validacao_real/2025T4/pnad_analise_2025T4.parquet`.
 Usa V1028 para descritivas populacionais. V1028, Estrato e UPA são preservados.
 O M5 usa os resultados do pipeline com cadastro completo de UPAs anterior à
@@ -153,8 +187,7 @@ perfil vai até 2025; anos ausentes do treino são ignorados pelo OneHotEncoder,
 como na avaliação. Não existem projeções futuras nem intervalos de previsão
 validados. Escolaridade é VD3005: código 0 inclui menos de um ano e 16 inclui
 16 anos ou mais. Os rótulos das faixas mostram anos de estudo, sem inferir
-diplomas. Valores nominais não foram preservados na base analítica; todos os
-rendimentos apresentados são reais, a preços de janeiro/2026.
+diplomas. As previsões de rendimento são expressas a preços de janeiro/2026.
 
 **Diagnóstico preditivo:** a aba Previsão lê os agregados vinculados ao mesmo
 modelo e à mesma amostra de teste de 2025 (50 mil registros na execução atual).
@@ -178,6 +211,11 @@ mostram somente a contagem. O gráfico observado/previsto contém médias de at�
 em R$/h. Não há pontos individuais. CSV exporta métricas e metadados, e o JSON
 geral inclui o diagnóstico quando a aba Previsão está aberta. Período, fonte,
 filtros descritivos e formulário de perfil não reestimam essa avaliação fixa.
+
+**Comparação temporal do M5 ponderado:** a aba Previsão mostra MAE, RMSE e viés
+em R$/h para o ajuste direto em reais, a exponencial do ajuste em log e a
+conversão com Duan. O seletor usa os decis observados de 2025 e o CSV inclui
+todos os recortes. Gere a tabela com `python pnad_pipeline/scripts/34_comparar_escala_m5.py`.
 
 **Correção de Duan:** execute `python pnad_pipeline/scripts/23_avaliar_duan.py`.
 O script reproduz a validação original, usa as 24.416 observações de 2023 para

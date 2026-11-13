@@ -124,3 +124,46 @@ escolha da conversão 2023T3–T4; calibração 2024; relato retrospectivo 2025.
 A execução anterior fica recolhida e identificada como histórica. O formulário,
 os erros e a faixa usam exclusivamente a nova execução e seus próprios hashes.
 Meta nominal não deve ser apresentada como garantia futura ou por grupo.
+
+## Estabilidade anual do M5
+
+O painel de robustez da aba Associação e inferência determina o local do novo
+diagnóstico. O perfil de idade e o gráfico de coeficientes da mesma aba dão
+a referência para a linha azul, a escala rotulada e as barras de intervalo.
+O seletor de Oaxaca dá a referência para alternar um contraste por vez. A
+orientação de acessibilidade do Refero dá suporte ao seletor nativo, ao anúncio
+do teste atualizado e à tabela equivalente com valores por ano.
+
+## Resíduos do M5 ponderado
+
+O diagnóstico de erro por grupo da aba Previsão dá a referência para os
+rótulos por linha e a marcação de zero. O seletor da estabilidade anual dá a
+referência para alternar o agrupamento local e manter uma tabela equivalente.
+Os dois gráficos usam escalas próprias, mantidas entre decis e macrorregiões.
+
+## Inferência, distribuição e mercado de trabalho · 12/11/2026
+
+O painel de robustez e as tabelas inferenciais existentes são a referência
+para os novos testes conjuntos e intervalos simultâneos. O seletor de Oaxaca
+recebe as quatro comparações regionais. Os seletores e gráficos existentes
+de desigualdade determinam o formato das novas séries de Theil e razões.
+A Visão geral recebe um painel de taxas com o mesmo gráfico de linha,
+cards, tabela equivalente e CSV, com dimensão, grupo e indicador locais.
+As orientações de foco visível e rótulos do Refero em `craft-details.md`
+orientam os controles. O desenho visual existente é a referência principal.
+
+As famílias estatísticas são fixadas antes dos filtros de apresentação.
+Os intervalos simultâneos usam Bonferroni para três contrastes. As taxas
+expõem a faixa de 25 a 65 anos, os denominadores e os IC95% pontuais.
+
+## Incerteza descritiva e sensibilidade de coortes · 12/11/2026
+
+A linha e a faixa do perfil de idade são a referência para as novas séries
+com IC95% pontual. Os seletores locais e as tabelas de mercado de trabalho
+determinam a interação dos intervalos salariais. A série de Theil existente
+determina a apresentação das parcelas dentro e entre regiões. O painel de
+pseudo-painel é a referência para as definições alternativas de coortes,
+os limiares e as tabelas de comparação. Mantêm-se os tokens existentes,
+foco visível, controles nativos rotulados e tabelas equivalentes aos gráficos.
+Os intervalos das médias de células e os intervalos exploratórios dos
+coeficientes são identificados junto das medidas correspondentes.

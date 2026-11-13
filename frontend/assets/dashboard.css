@@ -48,6 +48,7 @@
 .inequality-chart-wrap{overflow:auto;border-bottom:1px solid #edf0f4}
 .inequality-chart-wrap svg{display:block;width:100%;min-width:580px;height:auto}
 .inequality-chart-wrap text{font-family:var(--font);font-size:11px;fill:var(--muted)}
+.inequality-chart-wrap .line{fill:none;stroke:var(--blue);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .inequality-chart-wrap g:focus-visible circle{stroke:var(--ink);stroke-width:2}
 .inequality-note{margin:14px 0 18px}
 .quantile-panel{margin-top:18px}

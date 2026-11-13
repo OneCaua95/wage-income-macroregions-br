@@ -27,7 +27,16 @@ S.duanPeriod=saved.duanPeriod || '2024';
 S.intervalDimension=saved.intervalDimension || 'regiao';
 S.intervalPeriod=saved.intervalPeriod || '2025';
 S.cqrPeriod=saved.cqrPeriod || '2026T2';
-let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, predictionDiagnosticsData, smearingData, intervalData, cqrData, ufMapData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
+S.inequalityMetric=saved.inequalityMetric || 'gini';
+S.mercadoDimension=saved.mercadoDimension || 'geral';
+S.mercadoGroup=saved.mercadoGroup || 'Brasil';
+S.mercadoMetric=saved.mercadoMetric || 'participacao';
+S.incertezaGroup=saved.incertezaGroup || 'Brasil';
+S.incertezaMetric=saved.incertezaMetric || 'media';
+S.coorteScheme=saved.coorteScheme || 'historica';
+S.coorteId=saved.coorteId || '';
+S.theilMetric=saved.theilMetric || 'theil_entre';
+let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, robustezData, estabilidadeData, sensibilidadeUfData, sensibilidadeEmpregoData, multicolinearidadeData, residuosM5Data, dispersaoM5Data, influenciaM5Data, escalaM5Data, nominalRealM5Data, multiplicidadeM5Data, mercadoTrabalhoData, incertezaDescritivaData, sensibilidadeCoortesData, theilDecompositionData, predictionDiagnosticsData, smearingData, intervalData, cqrData, ufMapData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
 const tables = new Map();
 const selection = () => new URLSearchParams({fonte:S.source,periodo:S.period,...S.filters});
 const sourceData = () => catalog.sources.find(x=>x.id===S.source);
@@ -93,7 +102,7 @@ $('#source').onchange=e=>{S.source=e.target.value;buildFilters();refresh();};
 $('#period').onchange=e=>{S.period=e.target.value;refresh();};
 $('#clear-filters').onclick=()=>{S.filters={};buildFilters();refresh();};
 $('#toggle-filters').onclick=()=>{const button=$('#toggle-filters');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',open);$('#filter-fields').hidden=!open;};
-$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,comparacao_intervalos:cqrData,mapa_por_uf:ufMapData,comparacao:comparisonData,previsao:predictionData},null,2));
+$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,robustez_m5:robustezData,estabilidade_m5:estabilidadeData,sensibilidade_uf_m5:sensibilidadeUfData,sensibilidade_emprego_m5:sensibilidadeEmpregoData,multicolinearidade_m5:multicolinearidadeData,residuos_m5:residuosM5Data,dispersao_m5:dispersaoM5Data,influencia_m5:influenciaM5Data,escala_m5:escalaM5Data,nominal_real_m5:nominalRealM5Data,multiplicidade_m5:multiplicidadeM5Data,mercado_trabalho:mercadoTrabalhoData,incerteza_descritiva:incertezaDescritivaData,sensibilidade_coortes:sensibilidadeCoortesData,decomposicao_theil:theilDecompositionData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,comparacao_intervalos:cqrData,mapa_por_uf:ufMapData,comparacao:comparisonData,previsao:predictionData},null,2));
 
 function provenance(p) {
   $('#context-line').innerHTML=`${badge(p.ponderacao,p.ponderacao==='V1028'?'green':'amber')}<strong>${esc(S.period)}</strong><span>·</span><span>${esc(p.dominio)}</span><span>·</span><span>Preços de janeiro/2026</span><span>·</span><span>Processamento: ${esc(date(p.processado_em))}</span>`;
@@ -310,7 +319,7 @@ async function renderUFMap(data) {
 }
 function renderOverview() {
   const historical=modelData.historical,lead=historical.metricas_melhor_modelo || {},m=inferData.model;
-  $('#content').innerHTML=kpis(current.summary)+`<div class="grid">${panel('Evolução do salário-hora','Média trimestral · mesmo recorte e mesma fonte','<div id="series-chart"></div>','<button class="button secondary" id="export-series">↓ CSV</button>')}${panel('Comparação entre grupos','Médias do período selecionado',bars(current.groups),groupSelect())}</div>`+
+  $('#content').innerHTML=kpis(current.summary)+mercadoTrabalhoPanel()+incertezaDescritivaPanel()+`<div class="grid">${panel('Evolução do salário-hora','Média trimestral · mesmo recorte e mesma fonte','<div id="series-chart"></div>','<button class="button secondary" id="export-series">↓ CSV</button>')}${panel('Comparação entre grupos','Médias do período selecionado',bars(current.groups),groupSelect())}</div>`+
     `<div class="grid equal">${panel('Modelo preditivo recomendado','Ranking histórico exploratório não ponderado',`<div class="method-card">${badge('Benchmark histórico','amber')}<h3>${esc(historical.melhor_modelo_por_rmse_log_teste || 'Resultado indisponível')}</h3><div class="model-metrics"><span><strong>${fmt(lead.rmse_log,4)}</strong>RMSE log · teste</span><span><strong>${money(lead.mae_salario_hora)}</strong>MAE R$/h · teste</span><span><strong>${fmt(lead.r2_log,3)}</strong>R² log · teste</span></div><p class="note">Treino 2013–2022 · validação 2023–2024 · teste 2025. Seleção histórica pelo teste; a previsão operacional usa uma nova execução selecionada na validação.</p><a href="#previsao">Consultar previsão por perfil →</a></div>`)}${panel('Modelo de associação disponível','M5 ponderado na fonte selecionada',`<div class="method-card">${badge('M5 · V1028 + desenho','green')}<h3>Regressão ponderada M5</h3><p class="note">Linearização por UPA dentro de estrato. Sem comparação válida de especificações por erro de validação.</p>${m?`<div class="model-metrics"><span><strong>${fmt(m.n_observacoes_elegiveis,0)}</strong>Observações elegíveis</span><span><strong>${fmt(m.n_upas_desenho,0)}</strong>UPAs</span><span><strong>${fmt(m.n_estratos_desenho,0)}</strong>Estratos</span></div>`:`<p class="explanation">${esc(inferData.message)}</p>`}<a href="#associacao">Explorar associações e intervalos →</a></div>`)}</div>`+
     panel('Resultados por grupo','Selecione um grupo na tabela para consultar os denominadores.','<div id="group-table"></div>');
   makeTable('group-table',current.groups,groupColumns,current.provenance,showGroup);
@@ -322,6 +331,8 @@ function renderOverview() {
   $('#export-uf-map').onclick=()=>{if(ufMapData?.rows)csv('pnad_mapa_ufs_'+S.period,ufMapData.rows.map(row=>({...row,metrica_exibida:S.mapMetric})),ufMapData.provenance);};
   if(ufMapData?.notes)$('#uf-map-note').textContent=ufMapData.notes.join(' ');
   renderUFMap(ufMapData);
+  wireMercadoTrabalho();
+  wireIncertezaDescritiva();
 }
 
 function renderDescriptive() {
@@ -620,18 +631,52 @@ function wirePredictionDiagnostics() {
   makeTable('observed-predicted-table',d.observado_previsto,[{key:'faixa',label:'Faixa'},{key:'n',label:'Registros',format:v=>fmt(v,0)},{key:'media_observada',label:'Observado · R$/h',format:v=>money(v)},{key:'media_prevista',label:'Previsto · R$/h',format:v=>money(v)},{key:'observado_min',label:'Mínimo observado',format:v=>money(v)},{key:'observado_max',label:'Máximo observado',format:v=>money(v)}],d.provenance);
   update();
 }
+function escalaM5Panel() {
+  const title='M5 ponderado em reais e em log';
+  const d=escalaM5Data;
+  if(d?.status!=='ok')return panel(title,'Comparação temporal',empty('Comparação indisponível',d?.message||'Gere os resultados da comparação temporal do M5.'));
+  const {summary,rows}=d;
+  const groups=[...new Map(rows.map(r=>[r.grupo,r])).values()];
+  return panel(title,`Treino ${esc(summary.treino)} · Duan calibrado em ${esc(summary.calibracao)} · Teste ${esc(summary.teste)}`,
+    `<div class="mini-metrics"><div><strong>${fmt(summary.n_observacoes,0)}</strong><span>Registros no teste</span></div>
+     <div><strong>${fmt(summary.fator_duan,5)}</strong><span>Fator de Duan · ${fmt(summary.n_calibracao,0)} registros de 2024</span></div></div>
+     <div class="inline-options"><label for="escala-m5-grupo">Faixa salarial no teste de 2025<select id="escala-m5-grupo">
+       ${groups.map(r=>`<option value="${esc(r.grupo)}">${r.grupo==='Brasil'?'Brasil · todos os registros':esc(r.grupo+' · '+faixaSalarioM5(r)+'/h')}</option>`).join('')}
+     </select></label></div>
+     <p class="note" id="escala-m5-contagem" role="status"></p><div class="table-wrap" id="escala-m5-tabela"></div>
+     ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+    '<button class="button secondary" id="export-escala-m5" type="button" aria-label="Baixar CSV da comparação de escala do M5">↓ CSV</button>');
+}
+
+function wireEscalaM5() {
+  const select=$('#escala-m5-grupo');
+  if(!select)return;
+  const {rows,summary,provenance}=escalaM5Data;
+  const update=()=>{
+    const grupo=select.value;
+    const resultados=rows.filter(r=>r.grupo===grupo);
+    $('#escala-m5-contagem').textContent=`${fmt(resultados[0].n_registros_grupo,0)} registros nas três versões. Métricas ponderadas em R$/h.`;
+    $('#escala-m5-tabela').innerHTML=`<table><caption class="sr-only">Métricas ponderadas das três versões do M5 · ${esc(grupo)}</caption>
+      <thead><tr><th scope="col">Versão</th><th scope="col" title="Erro absoluto médio">MAE (R$/h)</th><th scope="col" title="Raiz do erro quadrático médio">RMSE (R$/h)</th><th scope="col">Viés (R$/h)</th><th scope="col">Previsões ≤ 0</th></tr></thead>
+      <tbody>${resultados.map(r=>`<tr><th scope="row">${esc(r.versao_modelo)}</th><td>${fmt(r.mae_rs_h,2)}</td><td>${fmt(r.rmse_rs_h,2)}</td><td>${r.vies_rs_h>0?'+':''}${fmt(r.vies_rs_h,2)}</td><td>${fmt(r.n_previsoes_nao_positivas,0)}</td></tr>`).join('')}</tbody></table>`;
+  };
+  select.onchange=update;
+  $('#export-escala-m5').onclick=()=>csv('pnad_escala_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+  update();
+}
+
 function renderPrediction() {
   const intervals=activeIntervals(),m=intervals?.manifesto || modelData.prediction;
   const duan=intervals?null:activeSmearing(),displayMetrics=duan?duan.test[duan.decisao.recomendada].summary:m?.metricas_teste;
   const displayInterpretation=duan?.decisao.adotar_duan?'Conversão de Duan para aproximar a média em reais; escolha feita na validação de 2024.':m?.interpretacao;
-  if(!m?.schema){$('#content').innerHTML=empty('Previsão ainda indisponível','Execute python pnad_pipeline/scripts/12_treinar_previsao.py para exportar o modelo e seu pré-processamento.')+rankingPanel();wireRanking();return;}
-  $('#content').innerHTML=`<div class="notice">Previsão para um perfil ocupado, de 25 a 65 anos, com renda e horas positivas. Os filtros descritivos permanecem salvos; a previsão usa os campos deste formulário e o modelo global.</div><div class="grid equal">${panel('Defina o perfil','As variáveis derivadas são calculadas de forma consistente com o pipeline.',`<form id="prediction-form"><div class="form-grid">${m.schema.map(f=>`<label>${esc(f.label)}${f.type==='number'?`<input name="${f.name}" type="number" inputmode="numeric" min="${f.min}" max="${f.max}" step="1" value="${f.name==='Idade'?40:12}" required>`:`<select name="${f.name}" required>${f.options.map(o=>`<option value="${esc(o.value)}" ${(f.name==='Ano'&&o.value==='2025')||(f.name==='UF'&&o.value==='35')||(f.name==='Trimestre'&&o.value==='4')?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`}</label>`).join('')}</div><div class="derived" id="derived-features"></div><div class="form-footer"><button class="button" type="submit" id="predict-button">Estimar salário-hora →</button><span class="note">Valores reais · janeiro/2026</span></div></form>`)}${panel('Estimativa do modelo','Nova execução selecionada exclusivamente na validação temporal.',`<div id="prediction-result"><div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO</span><div class="big-value">— <span class="kpi-unit">R$/h</span></div><p>Preencha o perfil e calcule a estimativa.</p></div></div><h3>${esc(m.modelo)}</h3><p class="note">${esc(m.criterio)}.</p><div class="mini-metrics" style="margin-top:16px"><div><strong>${money(displayMetrics.rmse_salario_hora)}</strong><span>RMSE R$/h · teste</span></div><div><strong>${money(displayMetrics.mae_salario_hora)}</strong><span>MAE R$/h · teste</span></div><div><strong>${fmt(displayMetrics.r2_salario_hora,3)}</strong><span>R² reais · teste</span></div></div><p class="note">Treino ${esc(m.divisao_temporal.treino)} · validação ${esc(m.divisao_temporal.validacao)} · teste ${esc(m.divisao_temporal.teste)}. Não ponderado.</p><p class="explanation">${esc(displayInterpretation)} ${esc(m.intervalo)}</p><details><summary class="note">Artefato, amostra e processamento</summary><dl class="detail-list"><dt>Execução</dt><dd>${esc(m.run_id)}</dd><dt>Treinado em</dt><dd>${date(m.treinado_em)}</dd><dt>Amostras</dt><dd>${esc(JSON.stringify(m.amostras))}</dd><dt>scikit-learn</dt><dd>${esc(m.sklearn)}</dd><dt>SHA-256</dt><dd>${esc(m.sha256)}</dd></dl></details>`)}</div>`+intervalPanel()+cqrPanel()+(intervals?`<details class="historical-prediction"><summary>Execução anterior · comparação de Duan (2013–2022 / 2023–2024)</summary><p class="note">Modelo e amostras próprios. Os valores desta comparação histórica não são usados no formulário ou nos intervalos atuais.</p>${duanPanel()}</details>`:duanPanel())+`<div id="prediction-diagnostics">${predictionDiagnosticsPanels()}</div>`+panel('Seleção da nova execução','Mesmo alvo, escala log, amostra e período; teste avaliado somente para o vencedor.','<div id="validation-table"></div>')+rankingPanel();
+  if(!m?.schema){$('#content').innerHTML=empty('Previsão ainda indisponível','Execute python pnad_pipeline/scripts/12_treinar_previsao.py para exportar o modelo e seu pré-processamento.')+escalaM5Panel()+rankingPanel();wireEscalaM5();wireRanking();return;}
+  $('#content').innerHTML=`<div class="notice">Previsão para um perfil ocupado, de 25 a 65 anos, com renda e horas positivas. Os filtros descritivos permanecem salvos; a previsão usa os campos deste formulário e o modelo global.</div><div class="grid equal">${panel('Defina o perfil','As variáveis derivadas são calculadas de forma consistente com o pipeline.',`<form id="prediction-form"><div class="form-grid">${m.schema.map(f=>`<label>${esc(f.label)}${f.type==='number'?`<input name="${f.name}" type="number" inputmode="numeric" min="${f.min}" max="${f.max}" step="1" value="${f.name==='Idade'?40:12}" required>`:`<select name="${f.name}" required>${f.options.map(o=>`<option value="${esc(o.value)}" ${(f.name==='Ano'&&o.value==='2025')||(f.name==='UF'&&o.value==='35')||(f.name==='Trimestre'&&o.value==='4')?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`}</label>`).join('')}</div><div class="derived" id="derived-features"></div><div class="form-footer"><button class="button" type="submit" id="predict-button">Estimar salário-hora →</button><span class="note">Valores reais · janeiro/2026</span></div></form>`)}${panel('Estimativa do modelo','Nova execução selecionada exclusivamente na validação temporal.',`<div id="prediction-result"><div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO</span><div class="big-value">— <span class="kpi-unit">R$/h</span></div><p>Preencha o perfil e calcule a estimativa.</p></div></div><h3>${esc(m.modelo)}</h3><p class="note">${esc(m.criterio)}.</p><div class="mini-metrics" style="margin-top:16px"><div><strong>${money(displayMetrics.rmse_salario_hora)}</strong><span>RMSE R$/h · teste</span></div><div><strong>${money(displayMetrics.mae_salario_hora)}</strong><span>MAE R$/h · teste</span></div><div><strong>${fmt(displayMetrics.r2_salario_hora,3)}</strong><span>R² reais · teste</span></div></div><p class="note">Treino ${esc(m.divisao_temporal.treino)} · validação ${esc(m.divisao_temporal.validacao)} · teste ${esc(m.divisao_temporal.teste)}. Não ponderado.</p><p class="explanation">${esc(displayInterpretation)} ${esc(m.intervalo)}</p><details><summary class="note">Artefato, amostra e processamento</summary><dl class="detail-list"><dt>Execução</dt><dd>${esc(m.run_id)}</dd><dt>Treinado em</dt><dd>${date(m.treinado_em)}</dd><dt>Amostras</dt><dd>${esc(JSON.stringify(m.amostras))}</dd><dt>scikit-learn</dt><dd>${esc(m.sklearn)}</dd><dt>SHA-256</dt><dd>${esc(m.sha256)}</dd></dl></details>`)}</div>`+intervalPanel()+cqrPanel()+(intervals?`<details class="historical-prediction"><summary>Execução anterior · comparação de Duan (2013–2022 / 2023–2024)</summary><p class="note">Modelo e amostras próprios. Os valores desta comparação histórica não são usados no formulário ou nos intervalos atuais.</p>${duanPanel()}</details>`:duanPanel())+`<div id="prediction-diagnostics">${predictionDiagnosticsPanels()}</div>`+escalaM5Panel()+panel('Seleção da nova execução','Mesmo alvo, escala log, amostra e período; teste avaliado somente para o vencedor.','<div id="validation-table"></div>')+rankingPanel();
   makeTable('validation-table',m.validacao,[{key:'modelo',label:'Modelo / configuração'},{key:'rmse_log',label:'RMSE log · validação',format:v=>fmt(v,4)},{key:'mae_log',label:'MAE log · validação',format:v=>fmt(v,4)},{key:'r2_log',label:'R² log · validação',format:v=>fmt(v,4)}],{conjunto:'Nova execução '+m.run_id,periodo:m.divisao_temporal.validacao,ponderacao:'Não ponderado',versao:m.version,filtros:{}});
   const form=$('#prediction-form');
   const derived=()=>{const p=Object.fromEntries(new FormData(form)),c=+p.Categoria_emprego;$('#derived-features').innerHTML=badge([1,3,5,7].includes(c)||[8,9].includes(c)&&p.Contribuicao_previdencia==='1'?'Formal':'Informal')+badge([5,6,7].includes(c)?'Setor público':'Setor privado')+badge('Idade² = '+fmt(Number(p.Idade)**2,0));};
   form.onchange=derived;derived();
   form.onsubmit=async e=>{e.preventDefault();const btn=$('#predict-button');btn.disabled=true;btn.textContent='Calculando…';try{const r=await api(intervals?'/api/previsao-intervalos':'/api/previsao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({perfil:Object.fromEntries(new FormData(form))}),signal:controller.signal});predictionData=r;const target=$('#prediction-result');if(!target)return;target.innerHTML=`<div class="prediction-output"><span class="kpi-label">SALÁRIO-HORA PREVISTO · PREÇOS JAN/2026</span><div class="big-value">${money(r.salario_hora)} <span class="kpi-unit">/h</span></div><p>${esc(r.interpretacao)}</p></div>${profileInterval(r)}${r.duan_disponivel?`<div class="prediction-conversions"><div><span>Original · exp(log)</span><strong>${money(r.salario_hora_original)}/h</strong></div><div><span>Duan · fator ${fmt(r.fator_duan,5)}</span><strong>${money(r.salario_hora_duan)}/h</strong></div></div><p class="note">Conversão recomendada pela validação de 2024: ${r.retransformacao==='duan'?'Duan':'original'}. Os valores aproximam alvos distintos: média geométrica e média em reais.</p>`:''}${r.aviso_ano?`<p class="explanation">${esc(r.aviso_ano)}</p>`:''}<button class="text-button" id="export-prediction">↓ Exportar previsão e perfil</button>`;$('#export-prediction').onclick=()=>download('pnad_previsao_perfil.json','application/json',JSON.stringify({...r,manifesto:m},null,2));}catch(e){if(e.name!=='AbortError'&&$('#prediction-result'))$('#prediction-result').innerHTML=empty('Previsão indisponível',e.message);}finally{btn.disabled=false;btn.textContent='Estimar salário-hora →';}};
-  wireRanking();wireDuan();wirePredictionDiagnostics();wireIntervals();wireCqr();
+  wireRanking();wireDuan();wirePredictionDiagnostics();wireIntervals();wireCqr();wireEscalaM5();
 }
 
 function forest(rows) {
@@ -870,16 +915,136 @@ function wireSelection() {
     {key:'p_valor_ipw_bh',label:'p ajustado BH',format:pfmt},
   ],selectionData.provenance);
 }
-function inequalityTrendChart(rows) {
-  rows=[...rows].filter(r=>Number.isFinite(Number(r.gini))).sort((a,b)=>a.periodo.localeCompare(b.periodo));
-  if(!rows.length)return empty('Série de Gini indisponível','Não há valores válidos para o grupo selecionado.');
-  const w=760,h=290,left=58,right=735,top=22,bottom=238;
-  let low=Math.floor(Math.min(...rows.map(r=>Number(r.gini)))*20)/20,high=Math.ceil(Math.max(...rows.map(r=>Number(r.gini)))*20)/20;
-  if(high<=low){low=Math.max(0,low-.05);high=Math.min(1,high+.05);}if(high<=low)high=low+.05;
+function confidenceTrendChart(rows,label) {
+  rows=[...rows].filter(r=>r.estimativa!=null&&Number.isFinite(Number(r.estimativa))).sort((a,b)=>a.trimestre.localeCompare(b.trimestre));
+  if(!rows.length)return empty('Série indisponível','Não há estimativas para este grupo.');
+  const w=800,h=300,left=75,right=775,top=30,bottom=246;
+  const bounds=rows.flatMap(r=>[r.estimativa,r.ic_inferior,r.ic_superior]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+  const minimum=Math.min(...bounds),maximum=Math.max(...bounds),padding=(maximum-minimum)*.1||1;
+  const low=minimum-padding,high=maximum+padding;
   const x=i=>rows.length===1?(left+right)/2:left+i*(right-left)/(rows.length-1),y=v=>bottom-(v-low)/(high-low)*(bottom-top);
-  const points=rows.map((r,i)=>`${x(i)},${y(Number(r.gini))}`).join(' '),ticks=Array.from({length:5},(_,i)=>low+(high-low)*i/4);
+  const line=rows.map((r,i)=>`${x(i)},${y(r.estimativa)}`).join(' ');
+  const complete=rows.every(r=>r.ic_inferior!=null&&r.ic_superior!=null);
+  const outline=rows.map((r,i)=>`${x(i)},${y(r.ic_superior)}`).concat(rows.map((r,i)=>`${x(i)},${y(r.ic_inferior)}`).reverse()).join(' ');
+  const band=complete?`<polygon points="${outline}" fill="#2f6df6" fill-opacity=".14"/>`:'';
+  const ticks=Array.from({length:5},(_,i)=>low+(high-low)*i/4),labels=[...new Set([0,Math.floor((rows.length-1)/2),rows.length-1])];
+  return `<div class="inequality-chart-wrap"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)} por trimestre com intervalos de confiança de 95%">${ticks.map(v=>`<line class="grid-line" x1="${left}" x2="${right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text>`).join('')}${band}<polyline class="line" points="${line}"/>${rows.map((r,i)=>`<g tabindex="0"><title>${esc(r.trimestre)} · ${money(r.estimativa)} · IC95% ${money(r.ic_inferior)} a ${money(r.ic_superior)}</title>${r.ic_inferior!=null&&r.ic_superior!=null?`<line x1="${x(i)}" x2="${x(i)}" y1="${y(r.ic_inferior)}" y2="${y(r.ic_superior)}" stroke="#1d4fbe" stroke-opacity=".5"/>`:''}<circle cx="${x(i)}" cy="${y(r.estimativa)}" r="3" fill="#2f6df6"/></g>`).join('')}${labels.map(i=>`<text x="${x(i)}" y="269" text-anchor="middle">${esc(rows[i].trimestre)}</text>`).join('')}<text x="12" y="17">R$/hora · IC95% pontual</text><text x="${(left+right)/2}" y="295" text-anchor="middle">Trimestre · escala ajustada aos valores</text></svg></div>`;
+}
+
+function incertezaDescritivaPanel() {
+  const d=incertezaDescritivaData,title='Salário-hora e incerteza amostral';
+  if(d?.status!=='ok')return panel(title,'Brasil e macroregiões · série histórica',empty('Intervalos indisponíveis',d?.message||'Selecione a série histórica ponderada.'));
+  const indicadores={media:'Média',P10:'P10',P50:'Mediana · P50',P90:'P90'};
+  const grupos=[...new Set(d.all_rows.map(r=>r.grupo))];
+  if(!grupos.includes(S.incertezaGroup))S.incertezaGroup='Brasil';
+  if(!indicadores[S.incertezaMetric])S.incertezaMetric='media';
+  const trend=d.all_rows.filter(r=>r.grupo===S.incertezaGroup&&r.indicador===S.incertezaMetric);
+  return `<section class="panel" id="incerteza-descritiva-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${esc(d.periodo_selecionado)} · V1028 · preços de janeiro/2026</p></div><button class="button secondary" id="export-incerteza-descritiva" type="button">↓ CSV · intervalos completos</button></div>
+    <div class="inline-options"><label>Indicador salarial<select id="incerteza-metric">${Object.entries(indicadores).map(([key,label])=>`<option value="${key}" ${key===S.incertezaMetric?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo da série salarial<select id="incerteza-group">${grupos.map(g=>`<option value="${esc(g)}" ${g===S.incertezaGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${confidenceTrendChart(trend,indicadores[S.incertezaMetric]+' do salário-hora · '+S.incertezaGroup)}</div><div id="incerteza-descritiva-table"></div>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireIncertezaDescritiva() {
+  const d=incertezaDescritivaData;
+  if(d?.status!=='ok')return;
+  makeTable('incerteza-descritiva-table',d.rows.filter(r=>r.indicador===S.incertezaMetric),[
+    {key:'grupo',label:'Grupo'},{key:'estimativa',label:'Estimativa (R$/h)',format:money},
+    {key:'ic_inferior',label:'IC95% inferior',format:money},{key:'ic_superior',label:'IC95% superior',format:money},
+    {key:'n_salarios',label:'Salários válidos',format:v=>fmt(v,0)},{key:'metodo',label:'Método'},
+  ],d.provenance);
+  const update=()=>{save();$('#incerteza-descritiva-panel').outerHTML=incertezaDescritivaPanel();wireIncertezaDescritiva();};
+  $('#incerteza-metric').onchange=e=>{S.incertezaMetric=e.target.value;update();};
+  $('#incerteza-group').onchange=e=>{S.incertezaGroup=e.target.value;update();};
+  $('#export-incerteza-descritiva').onclick=()=>csv('pnad_incerteza_descritiva',d.all_rows,d.provenance);
+}
+
+function sensibilidadeCoortesPanel() {
+  const d=sensibilidadeCoortesData,title='Incerteza das médias e definição das coortes';
+  if(d?.status!=='ok')return panel(title,'Pseudo-painel histórico',empty('Sensibilidade indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  const esquemas=d.summary.esquemas;
+  if(!esquemas.some(r=>r.esquema===S.coorteScheme))S.coorteScheme='historica';
+  const cells=d.rows.filter(r=>r.esquema===S.coorteScheme);
+  const grupos=[...new Map(cells.map(r=>[String(r.coorte_id),r.coorte])).entries()];
+  if(!grupos.some(([id])=>id===S.coorteId))S.coorteId=grupos.find(([id])=>cells.filter(r=>String(r.coorte_id)===id).length===d.summary.n_periodos)?.[0]||grupos[0]?.[0];
+  const selecionadas=cells.filter(r=>String(r.coorte_id)===S.coorteId);
+  const trend=selecionadas.map(r=>({...r,estimativa:r.media_geometrica_salario_hora,ic_inferior:r.ic95_inferior_media_geometrica,ic_superior:r.ic95_superior_media_geometrica}));
+  return `<section class="panel" id="sensibilidade-coortes-panel"><div class="panel-heading"><div><h2>${title}</h2><p>Três definições · três limiares de tamanho · mesmos trabalhadores</p></div><button class="button secondary" id="export-sensibilidade-coortes" type="button">↓ CSV · incerteza das células</button></div>
+    <div class="inline-options"><label>Definição de coorte<select id="coorte-scheme">${esquemas.map(r=>`<option value="${r.esquema}" ${r.esquema===S.coorteScheme?'selected':''}>${esc(r.rotulo)}</option>`).join('')}</select></label><label>Coorte para incerteza<select id="coorte-id">${grupos.map(([id,label])=>`<option value="${id}" ${id===S.coorteId?'selected':''}>${esc(label)}</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${confidenceTrendChart(trend,'Média geométrica do salário-hora da coorte')}</div><div id="coorte-incerteza-table"></div>
+    <h3>Especificações e tamanho das células</h3><div id="coorte-sensibilidade-modelos"></div>
+    <h3>Associações agregadas com controles de composição</h3><div id="coorte-sensibilidade-coeficientes"></div>
+    ${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireSensibilidadeCoortes() {
+  const d=sensibilidadeCoortesData;
+  if(d?.status!=='ok')return;
+  const rows=d.rows.filter(r=>r.esquema===S.coorteScheme&&String(r.coorte_id)===S.coorteId);
+  makeTable('coorte-incerteza-table',rows,[
+    {key:'trimestre',label:'Trimestre'},{key:'media_geometrica_salario_hora',label:'Média geométrica (R$/h)',format:money},
+    {key:'ic95_inferior_media_geometrica',label:'IC95% inferior',format:money},{key:'ic95_superior_media_geometrica',label:'IC95% superior',format:money},
+    {key:'erro_padrao_media_log',label:'EP da média log',format:v=>fmt(v,5)},
+    {key:'erro_padrao_media_anos_estudo',label:'EP da escolaridade média',format:v=>fmt(v,4)},
+    {key:'n',label:'Registros',format:v=>fmt(v,0)},{key:'n_efetivo_kish',label:'Kish',format:v=>fmt(v,0)},
+  ],d.provenance);
+  const specs={efeitos_fixos:'Efeitos fixos',composicao:'Composição',tendencias:'Tendências por coorte'};
+  makeTable('coorte-sensibilidade-modelos',d.summary.modelos.filter(r=>r.esquema===S.coorteScheme),[
+    {key:'especificacao',label:'Especificação',format:v=>specs[v]||v,sub:r=>r.motivo||'Ajuste dentro da amostra'},
+    {key:'limiar_n',label:'Mín. registros',format:v=>fmt(v,0)},{key:'limiar_kish',label:'Mín. Kish',format:v=>fmt(v,0)},
+    {key:'n_celulas',label:'Células',format:v=>fmt(v,0)},{key:'n_coortes',label:'Coortes',format:v=>fmt(v,0)},
+    {key:'r2_ponderado',label:'R²',format:v=>fmt(v,4)},{key:'rmse_log_ponderado',label:'RMSE log',format:v=>fmt(v,4)},
+  ],d.provenance);
+  makeTable('coorte-sensibilidade-coeficientes',d.summary.coeficientes.filter(r=>r.esquema===S.coorteScheme&&r.especificacao==='composicao'),[
+    {key:'termo',label:'Controle agregado',format:v=>({media_anos_estudo:'Escolaridade média',proporcao_formal:'Proporção formal',proporcao_setor_publico:'Proporção no setor público'}[v]||v)},{key:'limiar_n',label:'Mín. registros',format:v=>fmt(v,0)},
+    {key:'limiar_kish',label:'Mín. Kish',format:v=>fmt(v,0)},{key:'coeficiente',label:'β · log',format:v=>fmt(v,5)},
+    {key:'ic95_inferior',label:'IC95% exploratório inferior',format:v=>fmt(v,5)},
+    {key:'ic95_superior',label:'IC95% exploratório superior',format:v=>fmt(v,5)},
+  ],d.provenance);
+  const update=()=>{save();$('#sensibilidade-coortes-panel').outerHTML=sensibilidadeCoortesPanel();wireSensibilidadeCoortes();};
+  $('#coorte-scheme').onchange=e=>{S.coorteScheme=e.target.value;S.coorteId='';update();};
+  $('#coorte-id').onchange=e=>{S.coorteId=e.target.value;update();};
+  $('#export-sensibilidade-coortes').onclick=()=>csv('pnad_sensibilidade_coortes',d.rows,d.provenance);
+}
+
+function theilDecompositionPanel() {
+  const d=theilDecompositionData,title='Desigualdade dentro e entre macroregiões';
+  if(d?.status!=='ok')return panel(title,'Decomposição do Theil T',empty('Decomposição indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  const metrics={theil_total:'Theil total',theil_dentro:'Parcela dentro das regiões',theil_entre:'Parcela entre regiões'};
+  if(!metrics[S.theilMetric])S.theilMetric='theil_entre';
+  const selected=d.summary.series.find(r=>r.trimestre===d.periodo_selecionado);
+  const cards=selected?`<div class="mini-metrics">${Object.entries(metrics).map(([key,label])=>`<div><strong>${fmt(selected[key],4)}</strong><span>${label}</span></div>`).join('')}<div><strong>${fmt(selected.parcela_entre_pct,1)}%</strong><span>Parcela entre regiões no Theil total</span></div></div>`:'';
+  const trend=d.summary.series.map(r=>({...r,periodo:r.trimestre}));
+  return `<section class="panel" id="theil-decomposition-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${esc(d.periodo_selecionado)} · Theil T ponderado por V1028</p></div><button class="button secondary" id="export-theil-decomposition" type="button">↓ CSV · decomposição completa</button></div>${cards}
+    <label>Parcela na série do Theil<select id="theil-metric">${Object.entries(metrics).map(([key,label])=>`<option value="${key}" ${key===S.theilMetric?'selected':''}>${label}</option>`).join('')}</select></label>
+    <div aria-live="polite">${indicatorTrendChart(trend,S.theilMetric,metrics[S.theilMetric],4)}</div><div id="theil-decomposition-table"></div>
+    ${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireTheilDecomposition() {
+  const d=theilDecompositionData;
+  if(d?.status!=='ok')return;
+  makeTable('theil-decomposition-table',d.rows,[
+    {key:'regiao',label:'Macroregião'},{key:'media_salario_hora',label:'Média (R$/h)',format:money},
+    {key:'theil_regional',label:'Theil regional',format:v=>fmt(v,4)},
+    {key:'participacao_salarios_pct',label:'Participação na soma de salários-hora (%)',format:v=>fmt(v,2)},
+    {key:'contribuicao_dentro',label:'Contribuição dentro',format:v=>fmt(v,5)},
+    {key:'contribuicao_entre',label:'Contribuição entre',format:v=>fmt(v,5)},
+  ],d.provenance);
+  $('#theil-metric').onchange=e=>{S.theilMetric=e.target.value;save();$('#theil-decomposition-panel').outerHTML=theilDecompositionPanel();wireTheilDecomposition();};
+  $('#export-theil-decomposition').onclick=()=>csv('pnad_decomposicao_theil',d.all_rows,d.provenance);
+}
+
+function indicatorTrendChart(rows,key='gini',label='Gini · 0 a 1',digits=3) {
+  rows=[...rows].filter(r=>r[key]!=null&&Number.isFinite(Number(r[key]))).sort((a,b)=>a.periodo.localeCompare(b.periodo));
+  if(!rows.length)return empty('Série indisponível','Não há valores válidos para o grupo selecionado.');
+  const w=760,h=290,left=68,right=735,top=28,bottom=238;
+  const values=rows.map(r=>Number(r[key])),minimum=Math.min(...values),maximum=Math.max(...values);
+  const pad=(maximum-minimum)*.08||Math.max(maximum*.05,.01);
+  const low=Math.max(0,minimum-pad),high=maximum+pad;
+  const x=i=>rows.length===1?(left+right)/2:left+i*(right-left)/(rows.length-1),y=v=>bottom-(v-low)/(high-low)*(bottom-top);
+  const points=rows.map((r,i)=>`${x(i)},${y(Number(r[key]))}`).join(' '),ticks=Array.from({length:5},(_,i)=>low+(high-low)*i/4);
   const labels=[...new Set([0,Math.floor((rows.length-1)/3),Math.floor((rows.length-1)*2/3),rows.length-1])];
-  return `<div class="inequality-chart-wrap"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolução trimestral do índice de Gini do salário-hora real">${ticks.map(v=>`<g><line class="grid-line" x1="${left}" y1="${y(v)}" x2="${right}" y2="${y(v)}"/><text x="${left-9}" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text></g>`).join('')}<polyline class="line" points="${points}"/>${rows.map((r,i)=>`<circle tabindex="0" cx="${x(i)}" cy="${y(Number(r.gini))}" r="3.5" fill="#2f6df6"><title>${esc(r.periodo)} · Gini ${fmt(r.gini,3)}</title></circle>`).join('')}${labels.map(i=>`<text x="${x(i)}" y="260" text-anchor="middle">${esc(rows[i].periodo)}</text>`).join('')}<text x="12" y="15">Gini · 0 a 1</text><text x="${(left+right)/2}" y="284" text-anchor="middle">Trimestre</text></svg></div>`;
+  return `<div class="inequality-chart-wrap"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolução trimestral de ${esc(label)}">${ticks.map(v=>`<g><line class="grid-line" x1="${left}" y1="${y(v)}" x2="${right}" y2="${y(v)}"/><text x="${left-9}" y="${y(v)+4}" text-anchor="end">${fmt(v,digits)}</text></g>`).join('')}<polyline class="line" points="${points}"/>${rows.map((r,i)=>`<circle tabindex="0" cx="${x(i)}" cy="${y(Number(r[key]))}" r="3.5" fill="#2f6df6"><title>${esc(r.periodo)} · ${esc(label)} ${fmt(r[key],digits)}</title></circle>`).join('')}${labels.map(i=>`<text x="${x(i)}" y="260" text-anchor="middle">${esc(rows[i].periodo)}</text>`).join('')}<text x="12" y="16">${esc(label)}</text><text x="${(left+right)/2}" y="284" text-anchor="middle">Trimestre · escala ajustada aos valores</text></svg></div>`;
 }
 function lorenzChart(rows) {
   rows=[...rows].sort((a,b)=>Number(a.participacao_populacao)-Number(b.participacao_populacao));
@@ -902,19 +1067,25 @@ function renderInequality() {
   const allDistribution=data.all_distribution||[];
   const trend=allDistribution.filter(r=>r.dimensao===S.inequalityDimension&&r.grupo===S.inequalityGroup);
   const lorenz=(data.lorenz||[]).filter(r=>r.dimensao===S.inequalityDimension&&r.grupo===S.inequalityGroup);
-  const metricCards=selected?`<div class="mini-metrics inequality-summary"><div><strong>${money(selected.P10)}</strong><span>P10 · salário-hora</span></div><div><strong>${money(selected.P50)}</strong><span>P50 · mediana</span></div><div><strong>${money(selected.P90)}</strong><span>P90 · salário-hora</span></div><div><strong>${fmt(selected.razao_P90_P10,2)}</strong><span>Razão P90/P10</span></div><div><strong>${fmt(selected.gini,3)}</strong><span>Gini · 0 a 1</span></div></div>`:empty('Grupo sem dados neste período','Escolha outro grupo ou período para consultar a distribuição.');
-  $('#content').innerHTML=panel('Distribuição do salário-hora real','Percentis e desigualdade entre ocupados de 25 a 65 anos · série ponderada por V1028',`<div class="inline-options inequality-controls"><label>Comparar por<select id="inequality-dimension">${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${S.inequalityDimension===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Grupo<select id="inequality-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.inequalityGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><span class="badge">${esc(data.periodo_selecionado)} · valores reais</span></div>${metricCards}<p class="note inequality-note">P10, P25, P50, P75 e P90 usam V1028 e a inversa da distribuição empírica ponderada, sem interpolação. Gini e Lorenz descrevem o salário-hora individual de pessoas ocupadas; não medem renda domiciliar. ${fmt(selected?.n_observacoes,0)} registros no grupo selecionado neste trimestre. Filtros globais não reestimam esta análise.</p>`)+
-    `<div class="grid equal inequality-visuals">${panel('Evolução do Gini','Cada ponto representa um trimestre da série histórica.',inequalityTrendChart(trend))}${panel('Curva de Lorenz','A linha tracejada representa igualdade perfeita.',lorenzChart(lorenz))}</div>`+
-    panel('Distribuição por grupo no trimestre','Percentis e medidas de desigualdade do período selecionado.','<div id="inequality-table"></div>');
+  const metrics={gini:'Gini',theil_t:'Theil T',participacao_top10_pct:'Participação dos 10% maiores (%)',razao_P90_P10:'P90/P10',razao_P50_P10:'P50/P10',razao_P90_P50:'P90/P50'};
+  if(!metrics[S.inequalityMetric])S.inequalityMetric='gini';
+  const metricCards=selected?`<div class="mini-metrics inequality-summary"><div><strong>${money(selected.P10)}</strong><span>P10 · salário-hora</span></div><div><strong>${money(selected.P50)}</strong><span>P50 · mediana</span></div><div><strong>${money(selected.P90)}</strong><span>P90 · salário-hora</span></div><div><strong>${fmt(selected.razao_P90_P10,2)}</strong><span>Razão P90/P10</span></div><div><strong>${fmt(selected.gini,3)}</strong><span>Gini · 0 a 1</span></div><div><strong>${fmt(selected.theil_t,3)}</strong><span>Theil T</span></div><div><strong>${fmt(selected.participacao_top10_pct,1)}%</strong><span>Participação dos 10% maiores salários</span></div><div><strong>${fmt(selected.razao_P50_P10,2)}</strong><span>Razão P50/P10</span></div><div><strong>${fmt(selected.razao_P90_P50,2)}</strong><span>Razão P90/P50</span></div></div>`:empty('Grupo sem dados neste período','Escolha outro grupo ou período para consultar a distribuição.');
+  $('#content').innerHTML=panel('Distribuição do salário-hora real','Percentis e desigualdade entre ocupados de 25 a 65 anos · série ponderada por V1028',`<div class="inline-options inequality-controls"><label>Comparar por<select id="inequality-dimension">${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${S.inequalityDimension===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Grupo<select id="inequality-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.inequalityGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><span class="badge">${esc(data.periodo_selecionado)} · valores reais</span></div>${metricCards}<p class="note inequality-note">P10, P25, P50, P75 e P90 usam V1028 e a inversa da distribuição empírica ponderada, sem interpolação. Theil T usa a média ponderada de (salário/média) × log(salário/média). A participação do topo corresponde aos 10% da população ponderada com maiores salários, com peso fracionado na fronteira. Gini e Lorenz descrevem o salário-hora individual de pessoas ocupadas; não medem renda domiciliar. ${fmt(selected?.n_observacoes,0)} registros no grupo selecionado neste trimestre. Filtros globais não reestimam esta análise.</p>`)+
+    `<div class="grid equal inequality-visuals">${panel('Evolução da desigualdade','Cada ponto representa um trimestre da série histórica.',`<label>Indicador na série<select id="inequality-metric">${Object.entries(metrics).map(([key,label])=>`<option value="${key}" ${key===S.inequalityMetric?'selected':''}>${label}</option>`).join('')}</select></label>`+indicatorTrendChart(trend,S.inequalityMetric,metrics[S.inequalityMetric]))}${panel('Curva de Lorenz','A linha tracejada representa igualdade perfeita.',lorenzChart(lorenz))}</div>`+
+    panel('Distribuição por grupo no trimestre','Percentis e medidas de desigualdade do período selecionado.','<div id="inequality-table"></div>')+theilDecompositionPanel();
   makeTable('inequality-table',available,[
     {key:'grupo',label:labels[S.inequalityDimension]},
     {key:'P10',label:'P10',format:money},{key:'P50',label:'P50 · mediana',format:money},{key:'P90',label:'P90',format:money},
     {key:'razao_P90_P10',label:'P90/P10',format:v=>fmt(v,2)},{key:'gini',label:'Gini',format:v=>fmt(v,3)},
+    {key:'theil_t',label:'Theil T',format:v=>fmt(v,3)},{key:'participacao_top10_pct',label:'Participação dos 10% maiores (%)',format:v=>fmt(v,2)},
+    {key:'razao_P50_P10',label:'P50/P10',format:v=>fmt(v,2)},{key:'razao_P90_P50',label:'P90/P50',format:v=>fmt(v,2)},
     {key:'n_observacoes',label:'Observações',format:v=>fmt(v,0)},
   ],data.provenance);
   const rerender=()=>{S.inequalityDimension=$('#inequality-dimension').value;S.inequalityGroup=$('#inequality-group').value;save();renderInequality();};
   $('#inequality-dimension').onchange=()=>{S.inequalityDimension=$('#inequality-dimension').value;S.inequalityGroup='';save();renderInequality();};
   $('#inequality-group').onchange=rerender;
+  $('#inequality-metric').onchange=e=>{S.inequalityMetric=e.target.value;save();renderInequality();};
+  wireTheilDecomposition();
 }
 function quantileCoefficientChart(rows,level) {
   rows=rows.filter(r=>String(r.anos_de_estudo_codigo)===String(level)).sort((a,b)=>Number(a.quantil)-Number(b.quantil));
@@ -1012,28 +1183,428 @@ function wireOaxaca() {
   $('#export-oaxaca').onclick=()=>csv('pnad_oaxaca',oaxacaData.rows.map(r=>({...r,...oaxacaData.summary.comparacoes.find(c=>c.id===r.comparacao_id),metodo:oaxacaData.summary.metodo,unidade:oaxacaData.summary.unidade})),oaxacaData.provenance);
   update();
 }
+function comparacaoM5Table(rows, caption, columns, digits=2) {
+  const percent=v=>fmt(v,digits)+'%';
+  const points=v=>(v>0?'+':'')+fmt(v,digits)+' p.p.';
+  const estimate=(value,lower,upper,format)=>`<td>${format(value)}<small>IC95% de ${format(lower)} a ${format(upper)}</small></td>`;
+  const head=columns.map(({label})=>`<th scope="col">${esc(label)}</th>`).join('');
+  const body=rows.map(r=>{
+    const models=columns.map(({prefix})=>estimate(r[`${prefix}_pct`],r[`${prefix}_ic_inferior_pct`],r[`${prefix}_ic_superior_pct`],percent)).join('');
+    const change=estimate(r.mudanca_pp,r.mudanca_ic_inferior_pp,r.mudanca_ic_superior_pp,points);
+    return `<tr><th scope="row">${esc(r.contraste)}</th>${models}${change}</tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table><caption class="sr-only">${esc(caption)}</caption>
+    <thead><tr><th scope="col">Contraste ajustado</th>${head}<th scope="col">Mudança (p.p.)</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+function robustezM5Panel() {
+  const title='Robustez do M5 a salários extremos';
+  const d=robustezData;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Comparação indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const s=d.summary;
+  return panel(title,`Brasil · ${esc(d.periodo)} · V1028`,`
+    <div class="mini-metrics">
+      <div><strong>${money(s.p1_salario_hora)} a ${money(s.p99_salario_hora)}</strong><span>Limites por hora · P1 e P99</span></div>
+      <div><strong>${fmt(s.n_observacoes,0)}</strong><span>Registros em cada ajuste</span></div>
+      <div><strong>${pct(s.fracao_ponderada_limitada)}</strong><span>Parcela ponderada com salário limitado</span></div>
+    </div>
+    ${comparacaoM5Table(d.rows,'Contrastes do M5 e intervalos de confiança de 95%',[
+      {label:'M5 original',prefix:'original'},{label:'Salários limitados',prefix:'limitado'}
+    ])}
+    ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+  '<button class="button secondary" id="export-robustez-m5" type="button">↓ CSV</button>');
+}
+
+function wireRobustezM5() {
+  const button=$('#export-robustez-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=robustezData;
+  const {n_observacoes,p1_salario_hora,p99_salario_hora,fracao_ponderada_limitada}=summary;
+  button.onclick=()=>csv('pnad_robustez_m5',rows.map(row=>({...row,n_observacoes,p1_salario_hora,p99_salario_hora,fracao_ponderada_limitada})),provenance);
+}
+
+function sensibilidadeUfM5Panel() {
+  const title='M5 com e sem efeitos fixos de UF';
+  const d=sensibilidadeUfData;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Comparação indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const table=comparacaoM5Table(d.rows,'Contrastes ajustados com e sem efeitos fixos de UF',[
+    {label:'Com efeitos fixos de UF',prefix:'com_uf'},{label:'Sem efeitos fixos de UF',prefix:'sem_uf'}
+  ]);
+  const notes=d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('');
+  const sample=fmt(d.summary.n_observacoes,0);
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${sample} registros em cada ajuste`,table+notes,
+    '<button class="button secondary" id="export-sensibilidade-uf-m5" type="button" aria-label="Baixar CSV da comparação com e sem UF">↓ CSV</button>');
+}
+
+function wireSensibilidadeUfM5() {
+  const button=$('#export-sensibilidade-uf-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=sensibilidadeUfData;
+  button.onclick=()=>csv('pnad_sensibilidade_uf_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+}
+
+function sensibilidadeEmpregoM5Panel() {
+  const title='Escolaridade com e sem controles do emprego';
+  const d=sensibilidadeEmpregoData;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Comparação indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const table=comparacaoM5Table(d.rows,'Escolaridade e salário-hora com e sem controles do emprego',[
+    {label:'M5 completo',prefix:'completo'},{label:'Sem controles do emprego',prefix:'sem_controles_emprego'}
+  ]);
+  const notes=d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('');
+  const sample=fmt(d.summary.n_observacoes,0);
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${sample} registros em cada ajuste`,table+notes,
+    '<button class="button secondary" id="export-sensibilidade-emprego-m5" type="button" aria-label="Baixar CSV da comparação dos controles do emprego">↓ CSV</button>');
+}
+
+function wireSensibilidadeEmpregoM5() {
+  const button=$('#export-sensibilidade-emprego-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=sensibilidadeEmpregoData;
+  button.onclick=()=>csv('pnad_sensibilidade_emprego_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+}
+
+function nominalRealM5Panel() {
+  const title='M5 com salário-hora real e nominal';
+  const d=nominalRealM5Data;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Comparação indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const {n_observacoes,data_base_real}=d.summary;
+  const table=comparacaoM5Table(d.rows,'Contrastes ajustados em salário-hora real e nominal',[
+    {label:`Real · ${data_base_real.slice(3)}`,prefix:'real'},{label:'Nominal',prefix:'nominal'}
+  ],4);
+  const notes=d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('');
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${fmt(n_observacoes,0)} registros em cada ajuste`,table+notes,
+    '<button class="button secondary" id="export-nominal-real-m5" type="button" aria-label="Baixar CSV da comparação entre salário real e nominal">↓ CSV</button>');
+}
+
+function wireNominalRealM5() {
+  const button=$('#export-nominal-real-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=nominalRealM5Data;
+  const {n_observacoes,data_base_real}=summary;
+  button.onclick=()=>csv('pnad_nominal_real_m5',rows.map(r=>({...r,n_observacoes,data_base_real})),provenance);
+}
+
+function multiplicidadeM5Panel() {
+  const d=multiplicidadeM5Data;
+  if(d?.status!=='ok')return panel('Testes conjuntos e múltiplas comparações','M5 histórico ponderado',empty('Análise indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  return panel('Testes conjuntos e múltiplas comparações',`Brasil · ${esc(d.periodo)} · ${fmt(d.summary.n_observacoes,0)} registros`,
+    '<h3>Testes por bloco de variáveis</h3><div id="multiplicidade-blocos-table"></div><h3>Três contrastes com intervalos simultâneos</h3><div id="contrastes-simultaneos-table"></div>'+d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join(''));
+}
+
+function wireMultiplicidadeM5() {
+  if(multiplicidadeM5Data?.status!=='ok')return;
+  const {rows,summary,provenance}=multiplicidadeM5Data;
+  makeTable('multiplicidade-blocos-table',summary.testes_blocos,[
+    {key:'bloco',label:'Bloco',sub:r=>r.status==='ok'?'H₀ · todos os coeficientes iguais a zero':'Bloco sem teste identificável'},
+    {key:'n_termos',label:'Termos',format:v=>fmt(v,0)},
+    {key:'wald_f',label:'Wald F',format:v=>fmt(v,2)},
+    {key:'p_valor',label:'p-valor',format:pfmt},{key:'p_holm',label:'p ajustado Holm',format:pfmt},
+  ],provenance);
+  makeTable('contrastes-simultaneos-table',rows,[
+    {key:'contraste',label:'Contraste'},
+    {key:'associacao_pct',label:'Associação (%)',format:v=>fmt(v,2)},
+    {key:'ic_inferior_pct',label:'IC95% pontual inferior',format:v=>fmt(v,2)},
+    {key:'ic_superior_pct',label:'IC95% pontual superior',format:v=>fmt(v,2)},
+    {key:'ic_simultaneo_inferior_pct',label:'IC95% simultâneo inferior',format:v=>fmt(v,2)},
+    {key:'ic_simultaneo_superior_pct',label:'IC95% simultâneo superior',format:v=>fmt(v,2)},
+    {key:'p_holm',label:'p ajustado Holm · três contrastes',format:pfmt},
+  ],provenance);
+}
+
+function mercadoTrabalhoPanel() {
+  const d=mercadoTrabalhoData;
+  if(d?.status!=='ok')return panel('Mercado de trabalho · 25 a 65 anos','Taxas trimestrais ponderadas',empty('Taxas indisponíveis',d?.message||'Selecione a série histórica ponderada.'));
+  const labels={geral:'Brasil',regiao:'Macroregião',sexo:'Sexo',cor:'Cor/raça'};
+  const metricas={participacao:'Participação',ocupacao:'Ocupação',desocupacao:'Desocupação'};
+  if(!labels[S.mercadoDimension])S.mercadoDimension='geral';
+  if(!metricas[S.mercadoMetric])S.mercadoMetric='participacao';
+  const rows=d.rows.filter(r=>r.dimensao===S.mercadoDimension);
+  const groups=rows.map(r=>r.grupo);
+  if(!groups.includes(S.mercadoGroup))S.mercadoGroup=groups[0]||'Brasil';
+  const selected=rows.find(r=>r.grupo===S.mercadoGroup);
+  const cards=selected?`<div class="mini-metrics">${Object.entries(metricas).map(([key,label])=>`<div><strong>${(selected['taxa_'+key+'_pct']==null?'—':pct(selected['taxa_'+key+'_pct']/100))}</strong><span>${label} · IC95% ${fmt(selected[key+'_ic_inferior_pct'],1)}% a ${fmt(selected[key+'_ic_superior_pct'],1)}%</span></div>`).join('')}</div>`:'';
+  const trend=d.all_rows.filter(r=>r.dimensao===S.mercadoDimension&&r.grupo===S.mercadoGroup).map(r=>({...r,periodo:r.trimestre}));
+  return `<section class="panel" id="mercado-trabalho-panel"><div class="panel-heading"><div><h2>Mercado de trabalho · 25 a 65 anos</h2><p>${esc(d.periodo_selecionado)} · V1028 · IC95% por UPA e estrato</p></div><button class="button secondary" id="export-mercado-trabalho" type="button">↓ CSV · série completa</button></div>
+    <div class="inline-options"><label>Agrupar taxas por<select id="mercado-dimension">${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${key===S.mercadoDimension?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo das taxas<select id="mercado-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.mercadoGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label>Taxa no gráfico<select id="mercado-metric">${Object.entries(metricas).map(([key,label])=>`<option value="${key}" ${key===S.mercadoMetric?'selected':''}>${label}</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${cards}${indicatorTrendChart(trend,'taxa_'+S.mercadoMetric+'_pct',metricas[S.mercadoMetric]+' (%)',1)}</div><div id="mercado-trabalho-table"></div>
+    ${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireMercadoTrabalho() {
+  const d=mercadoTrabalhoData;
+  if(d?.status!=='ok')return;
+  const rows=d.rows.filter(r=>r.dimensao===S.mercadoDimension);
+  makeTable('mercado-trabalho-table',rows,[
+    {key:'grupo',label:'Grupo'},
+    ...['participacao','ocupacao','desocupacao'].map(key=>({key:'taxa_'+key+'_pct',label:{participacao:'Participação (%)',ocupacao:'Ocupação (%)',desocupacao:'Desocupação (%)'}[key],format:v=>fmt(v,2),sub:r=>`IC95% ${fmt(r[key+'_ic_inferior_pct'],2)}% a ${fmt(r[key+'_ic_superior_pct'],2)}%`})),
+    {key:'n_populacao',label:'Registros · população',format:v=>fmt(v,0)},
+    {key:'n_forca_trabalho',label:'Registros · força de trabalho',format:v=>fmt(v,0)},
+  ],d.provenance);
+  const update=()=>{save();$('#mercado-trabalho-panel').outerHTML=mercadoTrabalhoPanel();wireMercadoTrabalho();};
+  $('#mercado-dimension').onchange=e=>{S.mercadoDimension=e.target.value;S.mercadoGroup='';update();};
+  $('#mercado-group').onchange=e=>{S.mercadoGroup=e.target.value;update();};
+  $('#mercado-metric').onchange=e=>{S.mercadoMetric=e.target.value;update();};
+  $('#export-mercado-trabalho').onclick=()=>csv('pnad_mercado_trabalho',d.all_rows,d.provenance);
+}
+
+function multicolinearidadeM5Panel() {
+  const title='Multicolinearidade no M5 ponderado';
+  const d=multicolinearidadeData;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Diagnóstico indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const {completo,reduzido}=d.summary.modelos;
+  const modelCard=(model,label)=>`<div><strong>${fmt(model.numero_condicao,2)}</strong><span>Número de condição · ${label} · ${fmt(model.n_ativas,0)} de ${fmt(model.n_colunas,0)} colunas estimáveis</span></div>`;
+  const diagnosticCell=(row,model)=>{
+    const total=row[`${model}_n_colunas`],active=row[`${model}_n_ativas`];
+    if(total===0)return '<td>Fora do modelo</td>';
+    return `<td>${fmt(row[`${model}_gvif_ajustado`],3)}<small>${fmt(active,0)} de ${fmt(total,0)} colunas estimáveis</small></td>`;
+  };
+  const rows=d.rows.map((r,i)=>`<tr><th scope="row">${i===0?`<strong>${esc(r.bloco)}</strong>`:esc(r.bloco)}</th>${diagnosticCell(r,'completo')}${diagnosticCell(r,'reduzido')}</tr>`).join('');
+  const omitted=(model,label)=>`<p class="note"><strong>${label}</strong> · ${esc(model.omitidos.join(', ')||'Nenhuma')}</p>`;
+  const details=(completo.omitidos.length||reduzido.omitidos.length)?`<details><summary>Colunas omitidas por redundância ou falta de variação</summary>${omitted(completo,'M5 completo')}${omitted(reduzido,'Sem controles do emprego')}</details>`:'';
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${fmt(d.summary.n_observacoes,0)} registros`,
+    `<div class="mini-metrics">${modelCard(completo,'M5 completo')}${modelCard(reduzido,'Sem controles do emprego')}</div>
+     <div class="table-wrap"><table><caption class="sr-only">GVIF ajustado por bloco no M5 completo e sem controles do emprego</caption>
+     <thead><tr><th scope="col">Bloco de variáveis</th><th scope="col">M5 completo · GVIF ajustado</th><th scope="col">Sem controles do emprego · GVIF ajustado</th></tr></thead>
+     <tbody>${rows}</tbody></table></div>${details}
+     ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+    '<button class="button secondary" id="export-multicolinearidade-m5" type="button" aria-label="Baixar CSV de multicolinearidade">↓ CSV</button>');
+}
+
+function wireMulticolinearidadeM5() {
+  const button=$('#export-multicolinearidade-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=multicolinearidadeData;
+  button.onclick=()=>csv('pnad_multicolinearidade_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+}
+
+function fmtResiduoM5(value) {
+  return fmt(Math.abs(value)<.0005&&value!=null?0:value,3);
+}
+
+function residuosM5Chart(rows, allRows, dimension) {
+  const top=58, step=30, bottom=top+rows.length*step-14, width=820, height=bottom+36;
+  const maxMean=Math.max(.05,Math.ceil(20*Math.max(...allRows.map(r=>Math.abs(r.media_residuo_log))))/20);
+  const maxSd=Math.max(.1,Math.ceil(10*Math.max(...allRows.map(r=>r.desvio_padrao_residuo_log)))/10);
+  const meanX=v=>122+(v+maxMean)/(2*maxMean)*246;
+  const sdX=v=>500+v/maxSd*246;
+  const axes=(values,x)=>values.map(value=>`<line class="grid-line" x1="${x(value)}" x2="${x(value)}" y1="36" y2="${bottom}"/><text x="${x(value)}" y="${bottom+20}" text-anchor="middle">${fmt(value,2)}</text>`).join('');
+  const marks=rows.map((r,i)=>{
+    const y=top+step*i, mean=r.media_residuo_log, sd=r.desvio_padrao_residuo_log;
+    const point=mean==null?'':`<circle cx="${meanX(mean)}" cy="${y}" r="4.5" fill="var(--blue)"/>`;
+    const bar=sd==null?'':`<rect x="${sdX(0)}" y="${y-5}" width="${sdX(sd)-sdX(0)}" height="10" rx="2" fill="var(--blue)"/>`;
+    return `<g><title>${esc(`${r.grupo} · média ${fmtResiduoM5(mean)} · desvio-padrão ${fmtResiduoM5(sd)}`)}</title>
+      <text x="105" y="${y+4}" text-anchor="end">${esc(r.grupo)}</text>${point}${bar}
+      <text x="427" y="${y+4}" text-anchor="end">${fmtResiduoM5(mean)}</text>
+      <text x="798" y="${y+4}" text-anchor="end">${fmtResiduoM5(sd)}</text></g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Resíduo médio e desvio-padrão em log por ${esc(dimension)}. Valores disponíveis também na tabela.">
+    <text x="245" y="23" text-anchor="middle">Resíduo médio (log)</text>
+    <text x="623" y="23" text-anchor="middle">Desvio-padrão (log)</text>
+    ${axes([-maxMean,0,maxMean],meanX)}${axes([0,maxSd/2,maxSd],sdX)}
+    <line x1="${meanX(0)}" x2="${meanX(0)}" y1="36" y2="${bottom}" stroke="#8795a8" stroke-dasharray="4 3"/>
+    ${marks}</svg>`;
+}
+
+function residuosM5Panel() {
+  const title='Resíduos do M5 ponderado';
+  const d=residuosM5Data;
+  if(d?.status!=='ok')return panel(title,'Diagnóstico para a série histórica ponderada',empty('Diagnóstico indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${fmt(d.summary.n_observacoes,0)} registros`,
+    `<div class="inline-options"><label for="residuos-m5-dimensao">Agrupar por<select id="residuos-m5-dimensao">
+      <option value="decil">Decil do salário-hora estimado</option><option value="macrorregiao">Macrorregião</option>
+     </select></label></div>
+     <p class="note" id="residuos-m5-leitura" role="status"></p><div class="chart" id="residuos-m5-chart"></div>
+     <details><summary>Ver tabela de resíduos</summary><div class="table-wrap" id="residuos-m5-tabela"></div></details>
+     ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+    '<button class="button secondary" id="export-residuos-m5" type="button" aria-label="Baixar CSV dos resíduos do M5">↓ CSV</button>');
+}
+
+function faixaSalarioM5(row) {
+  const low=row.limite_inferior_rs_h,high=row.limite_superior_rs_h;
+  if(low==null)return `Até ${money(high)}`;
+  if(high==null)return `Acima de ${money(low)}`;
+  return `Acima de ${money(low)} até ${money(high)}`;
+}
+
+function wireResiduosM5() {
+  const select=$('#residuos-m5-dimensao');
+  if(!select)return;
+  const {rows,summary,provenance}=residuosM5Data;
+  const update=()=>{
+    const porDecil=select.value==='decil', dimension=porDecil?'decil':'macrorregião';
+    const grupos=rows.filter(r=>r.dimensao===select.value);
+    $('#residuos-m5-leitura').textContent=porDecil?'D1 é a faixa estimada mais baixa e D10 é a mais alta. Pontos à direita de zero indicam subestimação.':'A média fica próxima de zero em cada região por causa dos efeitos fixos de UF. Compare a dispersão no gráfico de desvio-padrão.';
+    $('#residuos-m5-chart').innerHTML=residuosM5Chart(grupos,rows,dimension);
+    $('#residuos-m5-tabela').innerHTML=`<table><caption class="sr-only">Resíduos ponderados por ${dimension}</caption>
+      <thead><tr><th scope="col">Grupo</th>${porDecil?'<th scope="col">Faixa estimada (R$/h)</th>':''}<th scope="col">Registros</th><th scope="col">Parcela ponderada</th><th scope="col">Média (log)</th><th scope="col">Desvio-padrão (log)</th></tr></thead>
+      <tbody>${grupos.map(r=>`<tr><th scope="row">${esc(r.grupo)}</th>${porDecil?`<td>${esc(faixaSalarioM5(r))}</td>`:''}<td>${fmt(r.n_registros_grupo,0)}</td><td>${pct(r.parcela_ponderada)}</td><td>${fmtResiduoM5(r.media_residuo_log)}</td><td>${fmtResiduoM5(r.desvio_padrao_residuo_log)}</td></tr>`).join('')}</tbody></table>`;
+  };
+  select.onchange=update;
+  $('#export-residuos-m5').onclick=()=>csv('pnad_residuos_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+  update();
+}
+
+function dispersaoM5Panel() {
+  const title='Dispersão dos resíduos nas faixas salariais';
+  const d=dispersaoM5Data;
+  if(d?.status!=='ok')return panel(title,'Extremos e centro da distribuição estimada',empty('Comparação indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const ref=d.rows[0];
+  const {p10,p40,p60,p90}=d.summary.cortes_rs_h;
+  const faixas={D1:`Até ${money(p10)}/h`,D10:`Acima de ${money(p90)}/h`};
+  const ic=(low,high,format)=>`<small>IC95% de ${format(low)} a ${format(high)}</small>`;
+  const percent=v=>fmt(v,1)+'%';
+  const signed=v=>(v>0?'+':'')+fmt(v,3);
+  const rows=d.rows.map(r=>`<tr><th scope="row">${esc(r.grupo)}</th><td>${esc(faixas[r.grupo])}</td><td>${fmt(r.desvio_grupo_log,3)}</td>
+    <td>${signed(r.diferenca_log)}${ic(r.diferenca_ic_inferior_log,r.diferenca_ic_superior_log,signed)}</td>
+    <td>${percent(r.aumento_pct)}${ic(r.aumento_ic_inferior_pct,r.aumento_ic_superior_pct,percent)}</td></tr>`).join('');
+  return panel(title,`Brasil · ${esc(d.periodo)} · V1028`,
+    `<p class="note">Referência D5 e D6 reunidos, acima de ${money(p40)}/h até ${money(p60)}/h. Desvio-padrão de <strong>${fmt(ref.desvio_referencia_log,3)}</strong> na escala logarítmica, com ${fmt(ref.n_registros_referencia,0)} registros.</p>
+     <div class="table-wrap"><table><caption class="sr-only">Desvios-padrão dos resíduos do M5 nos extremos em relação ao centro</caption>
+     <thead><tr><th scope="col">Decil</th><th scope="col">Faixa estimada</th><th scope="col">Desvio-padrão (log)</th><th scope="col">Diferença vs. centro (log)</th><th scope="col">Variação vs. centro (%)</th></tr></thead>
+     <tbody>${rows}</tbody></table></div>
+     ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+    '<button class="button secondary" id="export-dispersao-m5" type="button" aria-label="Baixar CSV da dispersão dos resíduos do M5">↓ CSV</button>');
+}
+
+function wireDispersaoM5() {
+  const button=$('#export-dispersao-m5');
+  if(!button)return;
+  const {rows,summary,provenance}=dispersaoM5Data;
+  button.onclick=()=>csv('pnad_dispersao_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+}
+
+function influenciaM5Panel() {
+  const title='Influência de observações no M5';
+  const d=influenciaM5Data;
+  if(d?.status!=='ok')return panel(title,'Diagnóstico para a série histórica ponderada',empty('Diagnóstico indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  const resumo=d.rows.filter(r=>r.dimensao==='resumo');
+  const signed=v=>(v>0?'+':'')+fmt(v,5);
+  const linhas=resumo.map(r=>`<tr><th scope="row">${esc(r.contraste)}</th><td>${fmt(r.estimativa_base_pct,2)}%</td>
+    <td>${signed(r.mudanca_minima_pp)}</td><td>${signed(r.mudanca_maxima_pp)}</td><td>${fmt(r.maior_mudanca_absoluta_pp,5)}</td></tr>`).join('');
+  const indisponiveis=d.summary.n_exclusoes_indisponiveis;
+  return panel(title,`Brasil · ${esc(d.periodo)} · ${fmt(d.summary.n_avaliados,0)} exclusões individuais avaliadas`,
+    `<div class="table-wrap"><table><caption class="sr-only">Maiores mudanças nos contrastes por exclusão individual</caption>
+     <thead><tr><th scope="col">Contraste ajustado</th><th scope="col">M5 completo</th><th scope="col">Menor mudança (p.p.)</th><th scope="col">Maior mudança (p.p.)</th><th scope="col">Maior valor absoluto (p.p.)</th></tr></thead>
+     <tbody>${linhas}</tbody></table></div>
+     ${indisponiveis?`<p class="note">${fmt(indisponiveis,0)} exclusões sem resultado por perda ou instabilidade de identificação.</p>`:''}
+     <h3>Onde se concentram os casos mais influentes</h3>
+     <div class="inline-options">
+       <label for="influencia-m5-contraste">Contraste<select id="influencia-m5-contraste">${resumo.map(r=>`<option>${esc(r.contraste)}</option>`).join('')}</select></label>
+       <label for="influencia-m5-dimensao">Agrupar por<select id="influencia-m5-dimensao"><option value="decil">Decil do salário-hora estimado</option><option value="macrorregiao">Macrorregião</option></select></label>
+     </div>
+     <p class="note" id="influencia-m5-leitura" role="status"></p><div class="table-wrap" id="influencia-m5-tabela"></div>
+     ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}`,
+    '<button class="button secondary" id="export-influencia-m5" type="button" aria-label="Baixar CSV de influência do M5">↓ CSV</button>');
+}
+
+function wireInfluenciaM5() {
+  const contraste=$('#influencia-m5-contraste'),dimensao=$('#influencia-m5-dimensao');
+  if(!contraste)return;
+  const {rows,summary,provenance}=influenciaM5Data;
+  const update=()=>{
+    const porDecil=dimensao.value==='decil', dimension=porDecil?'decil':'macrorregião';
+    const grupos=rows.filter(r=>r.contraste===contraste.value&&r.dimensao===dimensao.value);
+    const total=rows.find(r=>r.contraste===contraste.value&&r.dimensao==='resumo');
+    $('#influencia-m5-leitura').textContent=`${fmt(total.n_mais_influentes,0)} registros selecionados para este contraste. Corte por mudança absoluta de ${fmt(total.limiar_absoluto_pp,5)} p.p.`;
+    $('#influencia-m5-tabela').innerHTML=`<table><caption class="sr-only">Concentração dos casos mais influentes por ${dimension}</caption>
+      <thead><tr><th scope="col">Grupo</th>${porDecil?'<th scope="col">Faixa estimada (R$/h)</th>':''}<th scope="col">Registros influentes</th><th scope="col">Parcela dos influentes</th><th scope="col">Parcela da amostra avaliada</th><th scope="col">Influentes dentro do grupo</th></tr></thead>
+      <tbody>${grupos.map(r=>`<tr><th scope="row">${esc(r.grupo)}</th>${porDecil?`<td>${esc(faixaSalarioM5(r))}</td>`:''}<td>${fmt(r.n_mais_influentes,0)}</td><td>${pct(r.parcela_dos_mais_influentes)}</td><td>${pct(r.parcela_dos_avaliados)}</td><td>${r.parcela_influente_no_grupo==null?'—':fmt(100*r.parcela_influente_no_grupo,2)+'%'}</td></tr>`).join('')}</tbody></table>`;
+  };
+  contraste.onchange=dimensao.onchange=update;
+  $('#export-influencia-m5').onclick=()=>csv('pnad_influencia_m5',rows.map(r=>({...r,n_observacoes:summary.n_observacoes})),provenance);
+  update();
+}
+
+function estabilidadeM5Chart(rows, label) {
+  const width=860,height=270,left=76,right=828,top=20,bottom=228;
+  const min=Math.min(...rows.map(r=>r.ic_inferior_pct));
+  const max=Math.max(...rows.map(r=>r.ic_superior_pct));
+  const padding=Math.max((max-min)*.08,.1);
+  const low=min-padding,high=max+padding;
+  const first=rows[0].ano,last=rows.at(-1).ano;
+  const x=year=>left+(year-first)/(last-first)*(right-left);
+  const y=value=>bottom-(value-low)/(high-low)*(bottom-top);
+  const pctValue=value=>fmt(value,2)+'%';
+  const ticks=Array.from({length:5},(_,i)=>low+(high-low)*i/4);
+  const grid=ticks.map(value=>`<line class="grid-line" x1="${left}" x2="${right}" y1="${y(value)}" y2="${y(value)}"/><text x="${left-9}" y="${y(value)+4}" text-anchor="end">${fmt(value,1)}%</text>`).join('');
+  const zero=low<0&&high>0?`<line x1="${left}" x2="${right}" y1="${y(0)}" y2="${y(0)}" stroke="#8a98a8" stroke-dasharray="4 3"/>`:'';
+  const line=rows.map(r=>`${x(r.ano)},${y(r.estimativa_pct)}`).join(' ');
+  const points=rows.map(r=>{
+    const px=x(r.ano),upper=y(r.ic_superior_pct),lower=y(r.ic_inferior_pct);
+    const tooltip=`${r.ano} · ${pctValue(r.estimativa_pct)} · IC95% de ${pctValue(r.ic_inferior_pct)} a ${pctValue(r.ic_superior_pct)}`;
+    return `<g><title>${esc(tooltip)}</title><path d="M ${px-4} ${upper} h 8 M ${px} ${upper} V ${lower} M ${px-4} ${lower} h 8" fill="none" stroke="var(--blue)" stroke-opacity=".7" stroke-width="1.4"/><circle class="point" cx="${px}" cy="${y(r.estimativa_pct)}" r="4"/></g><text x="${px}" y="${bottom+19}" text-anchor="middle">${r.ano}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(label)} · Estimativas anuais com intervalos de confiança de 95%. Consulte a tabela abaixo para os valores.">
+    ${grid}${zero}<line class="grid-line" x1="${left}" x2="${right}" y1="${bottom}" y2="${bottom}"/>
+    <polyline class="line" points="${line}"/>${points}
+    <text transform="translate(16 ${(top+bottom)/2}) rotate(-90)" text-anchor="middle">Diferença ajustada (%)</text>
+    <text x="${(left+right)/2}" y="${height-4}" text-anchor="middle">Ano</text>
+  </svg>`;
+}
+
+function estabilidadeM5Panel() {
+  const title='Estabilidade anual do M5';
+  const d=estabilidadeData;
+  if(d?.status!=='ok')return panel(title,'Comparação para a série histórica ponderada',empty('Análise indisponível',d?.message||'Selecione a série histórica para consultar os resultados.'));
+  return panel(title,`Brasil · ${esc(d.periodo)} · V1028`,`
+    <div class="inline-options"><label for="estabilidade-contraste">Contraste ajustado<select id="estabilidade-contraste">
+      ${d.testes.map(t=>`<option>${esc(t.contraste)}</option>`).join('')}
+    </select></label></div>
+    <p class="note" id="estabilidade-teste" role="status"></p>
+    <div class="chart" id="estabilidade-grafico"></div>
+    <p class="chart-caption">Os pontos mostram as estimativas anuais e as barras indicam o IC95% pontual. A escala vertical acompanha o contraste selecionado.</p>
+    <details><summary>Ver estimativas e intervalos por ano</summary><div class="table-wrap" id="estabilidade-tabela"></div></details>
+    <details><summary>Como a estabilidade foi avaliada</summary>
+      ${d.notes.map(note=>`<p class="note">${esc(note)}</p>`).join('')}
+    </details>`, '<button class="button secondary" id="export-estabilidade-m5" type="button">↓ CSV completo</button>');
+}
+
+function wireEstabilidadeM5() {
+  const select=$('#estabilidade-contraste');
+  if(!select)return;
+  const {rows,testes,provenance}=estabilidadeData;
+  const porContraste=new Map(testes.map(t=>[t.contraste,t]));
+  select.value=porContraste.has(S.estabilidadeContraste)?S.estabilidadeContraste:testes[0].contraste;
+  const update=()=>{
+    const contraste=select.value;
+    const teste=porContraste.get(contraste);
+    const selected=rows.filter(r=>r.contraste===contraste);
+    const p=teste.p_holm<.00001?'p < 0,00001':`p = ${fmt(teste.p_holm,5)}`;
+    const leitura=teste.rejeita_estabilidade?'Há evidência de variação entre os anos.':'A evidência de variação entre os anos é insuficiente.';
+    $('#estabilidade-teste').textContent=`${leitura} Teste de Wald com ajuste de Holm (${p}).`;
+    $('#estabilidade-grafico').innerHTML=estabilidadeM5Chart(selected,contraste);
+    $('#estabilidade-tabela').innerHTML=`<table><caption class="sr-only">${esc(contraste)} · Estimativas anuais</caption>
+      <thead><tr><th scope="col">Ano</th><th scope="col">Diferença ajustada</th><th scope="col">IC95%</th><th scope="col">Registros</th></tr></thead>
+      <tbody>${selected.map(r=>`<tr><th scope="row">${r.ano}</th><td>${fmt(r.estimativa_pct,2)}%</td><td>${fmt(r.ic_inferior_pct,2)}% a ${fmt(r.ic_superior_pct,2)}%</td><td>${fmt(r.n_observacoes,0)}</td></tr>`).join('')}</tbody></table>`;
+  };
+  select.onchange=()=>{S.estabilidadeContraste=select.value;save();update();};
+  $('#export-estabilidade-m5').onclick=()=>csv('pnad_estabilidade_m5',rows.map(r=>({...r,...porContraste.get(r.contraste)})),provenance);
+  update();
+}
+
 function renderInference() {
-  if(inferData.status!=='ok'){$('#content').innerHTML=panel('M5 ponderado · associação e inferência','Resultados fixos da execução oficial 2025T4 ou da série histórica',empty('Recorte inferencial indisponível',inferData.message)+`<p class="note" style="margin-top:18px">A estatística descritiva continua disponível. O M5 publicado aceita apenas recortes por macroregião.</p>`)+groupGapPanel()+oaxacaPanel()+quantileRegressionPanel()+educationPanel()+regionalPanel()+pseudoPanel()+selectionPanel();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSelection();return;}
+  if(inferData.status!=='ok'){$('#content').innerHTML=panel('M5 ponderado · associação e inferência','Resultados fixos da execução oficial 2025T4 ou da série histórica',empty('Recorte inferencial indisponível',inferData.message)+`<p class="note" style="margin-top:18px">A estatística descritiva continua disponível. O M5 publicado aceita apenas recortes por macroregião.</p>`)+multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+quantileRegressionPanel()+educationPanel()+regionalPanel()+pseudoPanel()+sensibilidadeCoortesPanel()+selectionPanel();wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();return;}
   const m=inferData.model;
   $('#content').innerHTML=`<div class="notice">${esc(inferData.selection)} Os coeficientes descrevem associações condicionais; não são efeitos causais.</div><div class="mini-metrics"><div><strong>${fmt(m.n_observacoes_elegiveis,0)}</strong><span>Observações elegíveis</span></div><div><strong>${fmt(m.r2,3)}</strong><span>R² ponderado · ajuste em log, dentro da amostra</span></div><div><strong>${fmt(m.graus_liberdade_desenho,0)}</strong><span>Graus de liberdade · UPAs − estratos</span></div></div>`+
-    groupGapPanel()+oaxacaPanel()+
+    multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+
     panel('Perfil de idade',`Salário-hora previsto · ${esc(S.filters.regiao || 'Brasil')} · perfil médio ponderado`,`<div id="age-profile-chart">${ageProfileChart(inferData.perfil_idade)}</div><p class="note">As demais características ficam fixas na média ponderada da amostra. O valor exibido é exp(log salário-hora), uma média geométrica condicional sem correção de retransformação. A faixa mostra IC95% pontual pela linearização por UPA e estrato; a escala vertical acompanha os valores exibidos. Associação, não efeito causal.</p>`,'<button class="button secondary" id="export-age-profile" type="button">↓ CSV</button>')+
-    panel('Coeficientes e incerteza','Intervalos de confiança de 95% · linearização por UPA dentro de estrato',`<div class="inline-options"><label>Buscar variável<input id="coef-search" type="search" placeholder="Sexo, escolaridade, UF…"></label><label>Família de termos<select id="coef-family"><option value="all">Todos os termos</option><option value="main">Formalidade, sexo, idade e cor</option><option value="education">Escolaridade e interações</option><option value="uf">UF</option><option value="other">Setor e ocupação</option></select></label><label>Significância<select id="coef-significance"><option value="all">Todos os resultados</option><option value="raw">p &lt; 0,05</option><option value="bh">p ajustado BH &lt; 0,05</option></select></label></div><div id="forest-chart"></div>`)+
+    panel('Coeficientes e incerteza','Intervalos de confiança de 95% · linearização por UPA dentro de estrato',`<div class="inline-options"><label>Buscar variável<input id="coef-search" type="search" placeholder="Sexo, escolaridade, UF…"></label><label>Família de termos<select id="coef-family"><option value="all">Todos os termos</option><option value="main">Formalidade, sexo, idade e cor</option><option value="education">Escolaridade e interações</option><option value="uf">UF</option><option value="other">Setor e ocupação</option></select></label><label>Significância<select id="coef-significance"><option value="all">Todos os resultados</option><option value="raw">p &lt; 0,05</option><option value="bh">p ajustado BH &lt; 0,05</option><option value="holm">p ajustado Holm &lt; 0,05</option></select></label></div><div id="forest-chart"></div>`)+
     quantileRegressionPanel()+
     educationPanel()+
     regionalPanel()+
-    pseudoPanel()+
+    pseudoPanel()+sensibilidadeCoortesPanel()+
     selectionPanel()+
     panel('Tabela inferencial','Selecione uma variável para ler a referência e a interpretação. Busca e ordenação são filtros de visualização.','<div id="coef-table"></div>')+
-    panel('Como interpretar','Os termos precisam ser lidos à luz da especificação.',`<div class="method-list"><article><h3>Indicadoras em um modelo log-linear</h3><p>Quando apropriado, a associação percentual é 100 × (exp(β) − 1). Para sexo, formalidade e setor público, esta transformação se refere a 0 anos de estudo, pois existem interações com escolaridade. Para outro nível, combine os coeficientes; o intervalo dessa combinação exige a covariância.</p></article><article><h3>Idade, escolaridade e interações</h3><p>Idade está centrada em 45 anos e aparece também ao quadrado. Interações e termos contínuos não recebem automaticamente uma interpretação percentual. As categorias de anos de estudo comparam-se a 0 anos, no perfil de referência das interações.</p></article><article><h3>Variância e múltiplos testes</h3><p>${esc(inferData.method)} ${esc(inferData.variance)} BH controla a taxa de falsas descobertas na família de coeficientes publicada; não foi recalculado após filtros de visualização.</p></article></div><details style="margin-top:18px"><summary class="note">${inferData.omitted.length} termos constantes ou redundantes omitidos</summary><p class="note">${esc(inferData.omitted.join(', '))}</p></details>`);
+    panel('Como interpretar','Os termos precisam ser lidos à luz da especificação.',`<div class="method-list"><article><h3>Indicadoras em um modelo log-linear</h3><p>Quando apropriado, a associação percentual é 100 × (exp(β) − 1). Para sexo, formalidade e setor público, esta transformação se refere a 0 anos de estudo, pois existem interações com escolaridade. Para outro nível, combine os coeficientes; o intervalo dessa combinação exige a covariância.</p></article><article><h3>Idade, escolaridade e interações</h3><p>Idade está centrada em 45 anos e aparece também ao quadrado. Interações e termos contínuos não recebem automaticamente uma interpretação percentual. As categorias de anos de estudo comparam-se a 0 anos, no perfil de referência das interações.</p></article><article><h3>Variância e múltiplos testes</h3><p>${esc(inferData.method)} ${esc(inferData.variance)} BH controla a taxa de falsas descobertas e Holm controla o erro da família de coeficientes identificados, incluindo o intercepto. As correções usam a família completa de cada ajuste e são fixas durante os filtros de visualização.</p></article></div><details style="margin-top:18px"><summary class="note">${inferData.omitted.length} termos constantes ou redundantes omitidos</summary><p class="note">${esc(inferData.omitted.join(', '))}</p></details>`);
   const update=()=>{const q=$('#coef-search').value.toLocaleLowerCase('pt-BR'),f=$('#coef-family').value,s=$('#coef-significance').value;
-    const rows=inferData.rows.filter(r=>(r.rotulo+' '+r.variavel).toLocaleLowerCase('pt-BR').includes(q)&&(f==='all'||f==='main'&&/^(is_|Sexo_|Idade|Cor_)/.test(r.variavel)||f==='education'&&r.variavel.startsWith('Estudo')||f==='uf'&&r.variavel.startsWith('UF_')||f==='other'&&/^(Setor_|Ocup_)/.test(r.variavel))&&(s==='all'||s==='raw'&&r.p_valor<.05||s==='bh'&&r.p_bh<.05));
+    const rows=inferData.rows.filter(r=>(r.rotulo+' '+r.variavel).toLocaleLowerCase('pt-BR').includes(q)&&(f==='all'||f==='main'&&/^(is_|Sexo_|Idade|Cor_)/.test(r.variavel)||f==='education'&&r.variavel.startsWith('Estudo')||f==='uf'&&r.variavel.startsWith('UF_')||f==='other'&&/^(Setor_|Ocup_)/.test(r.variavel))&&(s==='all'||s==='raw'&&r.p_valor<.05||s==='bh'&&r.p_bh!=null&&r.p_bh<.05||s==='holm'&&r.p_holm!=null&&r.p_holm<.05));
     $('#forest-chart').innerHTML=forest(rows);
-    makeTable('coef-table',rows,[{key:'rotulo',label:'Variável',sub:r=>r.referencia},{key:'coeficiente',label:'β',format:v=>fmt(v,5)},{key:'associacao_pct',label:'Associação %',format:v=>v==null?'Interpretação específica':fmt(v)+'%'},{key:'erro_padrao',label:'Erro-padrão',format:v=>fmt(v,5)},{key:'ic_inferior',label:'IC95% inferior',format:v=>fmt(v,5)},{key:'ic_superior',label:'IC95% superior',format:v=>fmt(v,5)},{key:'p_valor',label:'p-valor',format:pfmt},{key:'p_bh',label:'p ajustado BH',format:pfmt}],inferData.provenance,r=>detail(r.rotulo,[['Variável no modelo',r.variavel],['Referência',r.referencia],['Coeficiente β',fmt(r.coeficiente,6)],['Associação percentual',r.associacao_pct==null?'Exige interpretação específica':fmt(r.associacao_pct)+'%'],['Erro-padrão pelo desenho',fmt(r.erro_padrao,6)],['IC95% de β',`[${fmt(r.ic_inferior,6)}; ${fmt(r.ic_superior,6)}]`],['p-valor',pfmt(r.p_valor)],['p ajustado BH',pfmt(r.p_bh)],['Método de variância',inferData.method]],r.tipo==='indicadora_condicional'?'Associação percentual condicional ao perfil de referência das interações. Não representa uma diferença média populacional nem um efeito causal.':'Associação condicional aos controles do M5. Nenhuma interpretação causal é identificada.'));
+    makeTable('coef-table',rows,[{key:'rotulo',label:'Variável',sub:r=>r.referencia},{key:'coeficiente',label:'β',format:v=>fmt(v,5)},{key:'associacao_pct',label:'Associação %',format:v=>v==null?'Interpretação específica':fmt(v)+'%'},{key:'erro_padrao',label:'Erro-padrão',format:v=>fmt(v,5)},{key:'ic_inferior',label:'IC95% inferior',format:v=>fmt(v,5)},{key:'ic_superior',label:'IC95% superior',format:v=>fmt(v,5)},{key:'p_valor',label:'p-valor',format:pfmt},{key:'p_bh',label:'p ajustado BH',format:pfmt},{key:'p_holm',label:'p ajustado Holm',format:pfmt}],inferData.provenance,r=>detail(r.rotulo,[['Variável no modelo',r.variavel],['Referência',r.referencia],['Coeficiente β',fmt(r.coeficiente,6)],['Associação percentual',r.associacao_pct==null?'Exige interpretação específica':fmt(r.associacao_pct)+'%'],['Erro-padrão pelo desenho',fmt(r.erro_padrao,6)],['IC95% de β',`[${fmt(r.ic_inferior,6)}; ${fmt(r.ic_superior,6)}]`],['p-valor',pfmt(r.p_valor)],['p ajustado BH',pfmt(r.p_bh)],['p ajustado Holm',pfmt(r.p_holm)],['Método de variância',inferData.method]],r.tipo==='indicadora_condicional'?'Associação percentual condicional ao perfil de referência das interações. Não representa uma diferença média populacional nem um efeito causal.':'Associação condicional aos controles do M5. Nenhuma interpretação causal é identificada.'));
   };
   $('#coef-search').oninput=update;$('#coef-family').onchange=update;$('#coef-significance').onchange=update;update();
   $('#export-age-profile').onclick=()=>{if(inferData.perfil_idade?.length)csv('pnad_perfil_idade',inferData.perfil_idade,inferData.provenance);};
-  wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSelection();
+  wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();
 }
 
 function renderMethodology() {
@@ -1069,7 +1640,22 @@ async function refresh() {
     const qe=selection();qe.set('dimensao',S.educationDimension);qe.set('especificacao',S.educationDimension==='geral'?S.educationSpec:'spline');qe.set('contraste',S.educationContrast);
     const qs=selection();qs.set('dimensao',S.selectionDimension);
     const mapQuery=selection();mapQuery.delete('uf');
-    const results=await Promise.all([api('/api/descritiva?'+q,{signal:controller.signal}),api('/api/modelos',{signal:controller.signal}),api('/api/inferencia?'+q,{signal:controller.signal}),api('/api/educacao?'+qe,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/selecao?'+qs,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/heterogeneidade-regional?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/pseudopainel?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/diferencas-grupos?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='visao'?api('/api/mapa-uf?'+mapQuery,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),api('/api/oaxaca?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='previsao'?api('/api/diagnostico-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/duan',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),['previsao','metodologia'].includes(S.view)?api('/api/intervalos-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/comparacao-intervalos',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
+    const results=await Promise.all([api('/api/descritiva?'+q,{signal:controller.signal}),api('/api/modelos',{signal:controller.signal}),api('/api/inferencia?'+q,{signal:controller.signal}),api('/api/educacao?'+qe,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/selecao?'+qs,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/heterogeneidade-regional?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/pseudopainel?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),api('/api/diferencas-grupos?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='visao'?api('/api/mapa-uf?'+mapQuery,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),api('/api/oaxaca?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})),S.view==='previsao'?api('/api/diagnostico-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/duan',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),['previsao','metodologia'].includes(S.view)?api('/api/intervalos-previsao',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),S.view==='previsao'?api('/api/comparacao-intervalos',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/robustez-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/estabilidade-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/sensibilidade-uf-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/sensibilidade-emprego-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/multicolinearidade-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/residuos-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/influencia-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/dispersao-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='previsao'?api('/api/comparacao-escala-m5',{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/nominal-real-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/multiplicidade-m5?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='visao'?api('/api/mercado-trabalho?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='visao'?api('/api/incerteza-descritiva?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/sensibilidade-coortes?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='desigualdade'?api('/api/decomposicao-theil?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
     if(token!==revision)return;
     [current,modelData,inferData]=results;
     if(educationToken===educationRevision)educationData=results[3];
@@ -1084,6 +1670,21 @@ async function refresh() {
     smearingData=results[12];
     intervalData=results[13];
     cqrData=results[14];
+    robustezData=results[15];
+    estabilidadeData=results[16];
+    sensibilidadeUfData=results[17];
+    sensibilidadeEmpregoData=results[18];
+    multicolinearidadeData=results[19];
+    residuosM5Data=results[20];
+    influenciaM5Data=results[21];
+    dispersaoM5Data=results[22];
+    escalaM5Data=results[23];
+    nominalRealM5Data=results[24];
+    multiplicidadeM5Data=results[25];
+    mercadoTrabalhoData=results[26];
+    incertezaDescritivaData=results[27];
+    sensibilidadeCoortesData=results[28];
+    theilDecompositionData=results[29];
     provenance(current.provenance);
     if(current.status==='empty'||current.status==='insufficient'){$('#notice').hidden=false;$('#notice').textContent=current.status==='empty'?'Nenhuma observação para este recorte. Altere os filtros ou limpe a seleção.':'Amostra insuficiente: menos de 30 salários-hora válidos. Estatísticas são exploratórias; o comparador não apresentará diferenças.';}
     ({visao:renderOverview,descritiva:renderDescriptive,desigualdade:renderInequality,previsao:renderPrediction,associacao:renderInference,metodologia:renderMethodology})[S.view]();

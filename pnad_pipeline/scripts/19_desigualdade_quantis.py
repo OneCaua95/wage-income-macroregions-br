@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from scipy import stats
+from scipy.special import xlogy
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -55,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amostra-quantis", type=int, default=30_000,
                         help="Máximo de linhas uniformemente amostradas por trimestre × macroregião.")
     parser.add_argument("--seed", type=int, default=20261028)
+    parser.add_argument("--somente-distribuicao", action="store_true", help="Atualiza os indicadores descritivos de uma execução existente.")
     parser.add_argument("--upa-unica", choices=["erro", "ajustar"], default="ajustar")
     parser.add_argument("--upa-multiestrato", choices=["erro", "separar"], default="separar")
     return parser.parse_args()
@@ -88,12 +90,20 @@ def metricas_distribuicao(values: np.ndarray, weights: np.ndarray, key: tuple) -
     deciles = np.linspace(0, 1, 11)
     curve = np.interp(deciles, x_lorenz, y_lorenz)
     area = float(np.sum(np.diff(x_lorenz) * (y_lorenz[:-1] + y_lorenz[1:]) / 2))
+    theil, top10 = None, None
+    if total_income > 0:
+        relative_income = values / (total_income / total_weight)
+        theil = float(max(weights @ xlogy(relative_income, relative_income) / total_weight, 0))
+        top10 = float(100 * (1 - np.interp(.9, x_lorenz, y_lorenz)))
     row = {
         "periodo": key[0], "dimensao": key[1], "grupo": key[2],
         "n_observacoes": int(len(values)), "peso_v1028": total_weight,
         "P10": float(q_values[0]), "P25": float(q_values[1]), "P50": float(q_values[2]),
         "P75": float(q_values[3]), "P90": float(q_values[4]),
         "razao_P90_P10": float(q_values[4] / q_values[0]) if q_values[0] > 0 else None,
+        "razao_P50_P10": float(q_values[2] / q_values[0]) if q_values[0] > 0 else None,
+        "razao_P90_P50": float(q_values[4] / q_values[2]) if q_values[2] > 0 else None,
+        "theil_t": theil, "participacao_top10_pct": top10,
         "gini": float(np.clip(1 - 2 * area, 0, 1)) if total_income > 0 else None,
     }
     lorenz = [{"periodo": key[0], "dimensao": key[1], "grupo": key[2],
@@ -313,6 +323,10 @@ def executar(args: argparse.Namespace) -> int:
     if (parquet.schema_arrow.metadata or {}).get(b"pnad_amostra_completa") == b"false":
         raise ValueError("Use a base consolidada completa, anterior aos filtros de domínio.")
     args.saida_dir.mkdir(parents=True, exist_ok=True)
+    somente_distribuicao = getattr(args, "somente_distribuicao", False)
+    resumo_anterior = args.saida_dir / "resumo_desigualdade.json"
+    if somente_distribuicao and not all(path.exists() for path in (resumo_anterior, args.saida_dir / "coeficientes_quantis.csv")):
+        raise ValueError("Execute primeiro a análise completa para obter as regressões quantílicas.")
     rng = np.random.default_rng(args.seed)
     sample_cap = max(1, int(np.ceil(args.amostra_quantis / (52 * len(REGIOES)))))
     sample_parts: dict[tuple[int, str], pd.DataFrame] = {}
@@ -357,7 +371,8 @@ def executar(args: argparse.Namespace) -> int:
                 distribution_parts[(str(period_label), "geral", "Brasil")].append(
                     (part.salario_hora.to_numpy(copy=True), part.peso.to_numpy(copy=True)))
 
-            for key, part in df.groupby(["_ordem_periodo", "Regiao"], observed=True, sort=False):
+            grupos_amostra = [] if somente_distribuicao else df.groupby(["_ordem_periodo", "Regiao"], observed=True, sort=False)
+            for key, part in grupos_amostra:
                 stratum = (int(key[0]), str(key[1]))
                 row_counts[stratum] += len(part)
                 weight_totals[stratum] += float(part["V1028"].sum())
@@ -388,6 +403,19 @@ def executar(args: argparse.Namespace) -> int:
     lorenz = pd.DataFrame(lorenz_rows)
     del distribution_parts
     gc.collect()
+
+    if somente_distribuicao:
+        summary = json.loads(resumo_anterior.read_text(encoding="utf-8"))
+        if summary["n_observacoes_elegiveis"] != n_eligible or summary["n_periodos"] != len(period_set):
+            raise ValueError("A amostra mudou. Execute a análise completa para atualizar também os quantis.")
+        distribution.sort_values(["periodo", "dimensao", "grupo"], inplace=True)
+        lorenz.sort_values(["periodo", "dimensao", "grupo", "participacao_populacao"], inplace=True)
+        for frame, nome in ((distribution, "distribuicao_desigualdade.csv"), (lorenz, "curva_lorenz.csv")):
+            temporario = args.saida_dir / (nome + ".tmp")
+            frame.to_csv(temporario, index=False)
+            temporario.replace(args.saida_dir / nome)
+        print(f"Distribuição atualizada em {len(distribution):,} grupos, incluindo Theil e participação do topo.", flush=True)
+        return 0
 
     sample = salvar_amostra_quantis(sample_parts, row_counts, weight_totals)
     del sample_parts

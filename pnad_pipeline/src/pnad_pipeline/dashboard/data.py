@@ -12,6 +12,7 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
 from pnad_pipeline.analise.amostragem import media_ponderada, quantis_ponderados, validar_desenho
+from pnad_pipeline.analise.emprego import CRITERIO_INFORMALIDADE, informalidade_descritiva
 from pnad_pipeline.analise.regressao.multiplicidade import ajustar_holm
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -42,7 +43,11 @@ HISTORICO_MERCADO = HISTORICO_INFERENCE / "mercado_trabalho"
 HISTORICO_INCERTEZA = HISTORICO_INFERENCE / "incerteza_descritiva"
 HISTORICO_SENSIBILIDADE_COORTES = HISTORICO_INFERENCE / "sensibilidade_coortes"
 HISTORICO_THEIL = HISTORICO_INFERENCE / "decomposicao_theil"
-VERSION = "dashboard-2.21"
+HISTORICO_INCERTEZA_DESIGUALDADE = HISTORICO_INFERENCE / "incerteza_desigualdade"
+HISTORICO_CRESCIMENTO = HISTORICO_INFERENCE / "crescimento_salarial"
+HISTORICO_RIF = HISTORICO_INFERENCE / "rif_desigualdade"
+HISTORICO_EVOLUCAO_ANUAL = HISTORICO_INFERENCE / "evolucao_regional_anual"
+VERSION = "dashboard-2.23"
 FILTERS = {
     "regiao": "Regiao", "uf": "UF", "sexo": "Sexo_Desc", "cor": "Cor_Desc",
     "escolaridade": "Escolaridade_Nivel", "idade": "Faixa_Etaria",
@@ -280,13 +285,16 @@ def describe(source, period, filters, group="regiao"):
 
 
 def uf_map(source, period, filters):
-    """Distribuição ponderada do salário-hora por UF no período e filtros escolhidos."""
+    """Salários e informalidade por UF; a referência recebe os mesmos filtros."""
     filters = {key: value for key, value in filters.items() if key != "uf"}
     df = filtered(source, period, filters)
-    wage = df.loc[df.Salario_Hora.notna() & df.UF.notna()]
-    weighted = "V1028" in wage.columns
+    weighted = "V1028" in df.columns
+    referencia = filtered(source, "2013T1", filters) if source == "historico" else df.iloc[0:0]
+    grupos_base = {int(code): sub for code, sub in referencia.groupby("UF", observed=True)}
 
-    def summarize(sub, code=None):
+    def summarize(populacao, base, code=None):
+        sub = populacao.loc[populacao.Salario_Hora.notna()]
+        salarios_base = base.loc[base.Salario_Hora.notna()]
         n = len(sub)
         row = {
             "uf": None if code is None else str(code),
@@ -298,7 +306,13 @@ def uf_map(source, period, filters):
             "p10": None,
             "p90": None,
             "p90_p10": None,
+            "media": None, "media_base": None, "crescimento_media_pct": None,
+            "periodo_base": "2013T1" if source == "historico" else None,
+            "n_salarios_base": len(salarios_base),
+            **informalidade_descritiva(populacao),
         }
+        if len(salarios_base) >= 30:
+            row["media_base"] = float(media_ponderada(salarios_base, "Salario_Hora") if weighted else salarios_base.Salario_Hora.mean())
         if n < 30:
             return row
         if weighted:
@@ -306,34 +320,43 @@ def uf_map(source, period, filters):
         else:
             p10, median, p90 = sub.Salario_Hora.quantile([.10, .50, .90]).to_numpy()
         row.update({
+            "media": float(media_ponderada(sub, "Salario_Hora") if weighted else sub.Salario_Hora.mean()),
             "mediana": float(median),
             "p10": float(p10),
             "p90": float(p90),
             "p90_p10": float(p90 / p10) if p10 > 0 else None,
         })
+        if row["media_base"] is not None and row["media_base"] > 0:
+            row["crescimento_media_pct"] = 100 * (row["media"] / row["media_base"] - 1)
         return row
 
-    national = summarize(wage)
+    national = summarize(df, referencia)
     rows = []
-    groups = {int(code): sub for code, sub in wage.groupby("UF", observed=True)}
+    groups = {int(code): sub for code, sub in df.groupby("UF", observed=True)}
     for code, sigla in UF_NAMES.items():
-        sub = groups.get(code)
-        row = summarize(sub, code) if sub is not None else summarize(wage.iloc[0:0], code)
-        row["regiao"] = str(sub.Regiao.iloc[0]) if sub is not None and len(sub) else None
+        sub = groups.get(code, df.iloc[0:0])
+        row = summarize(sub, grupos_base.get(code, referencia.iloc[0:0]), code)
+        row["regiao"] = str(sub.Regiao.iloc[0]) if len(sub) else None
         rows.append(row)
-    status = "ok" if national["n_salarios"] >= 30 else "insufficient" if national["n_salarios"] else "empty"
+    enough = national["n_salarios"] >= 30 or national["n_formalidade"] >= 30
+    status = "ok" if enough else "insufficient" if len(df) else "empty"
     return clean({
         "status": status,
         "rows": rows,
         "brazil": national,
-        "metrics": ["mediana", "p90_p10"],
+        "metrics": ["mediana", "p90_p10", "informalidade_pct"] + (["crescimento_media_pct"] if source == "historico" else []),
+        "criterio_informalidade": CRITERIO_INFORMALIDADE,
         "minimum_n": 30,
-        "provenance": provenance(source, period, filters),
+        "provenance": {**provenance(source, period, filters), "referencia_crescimento": "2013T1" if source == "historico" else None,
+                       "criterio_informalidade": CRITERIO_INFORMALIDADE},
         "notes": [
             "Valores agrupados por UF no período selecionado; o filtro de UF ativo não remove os demais estados do mapa.",
             "Quantis ponderados pela V1028 quando disponível; P90/P10 é a razão entre os quantis do salário-hora real.",
             "Estados com menos de 30 salários-hora válidos não recebem estimativa. O limite é regra de apresentação, não garantia de precisão.",
+            "Crescimento da média aritmética real contra 2013T1, com os mesmos filtros nos dois períodos e mínimo de 30 salários em ambos. Disponível na fonte histórica, sem IC no mapa; inclui diferenças sazonais e de composição.",
+            "Informalidade usa ocupados classificados, inclusive sem salário válido, com mínimo de 30 registros no denominador. " + CRITERIO_INFORMALIDADE,
             "A malha territorial usa limites estaduais simplificados da API de Malhas Geográficas do IBGE; nenhum microdado individual é enviado ao navegador.",
+            "A proxy salarial preserva a definição histórica: rendimento habitual do trabalho principal (VD4016) / horas habituais de todos os trabalhos (VD4031 × 4,33). Múltiplos vínculos limitam sua interpretação como remuneração por hora de um único trabalho.",
         ],
     })
 
@@ -833,12 +856,25 @@ def mercado_trabalho(source, period, filters):
         metodo="Linearização trimestral de razões por UPA dentro de estrato",
     )
     if result["status"] == "ok":
+        result["all_sector_rows"] = result["summary"].pop("composicao_setorial", [])
+        result["sector_rows"] = [r for r in result["all_sector_rows"] if r["trimestre"] == period]
+        result["provenance"]["criterio_informalidade"] = result["summary"].get("criterio_informalidade")
         result["all_rows"] = result["rows"]
         result["rows"] = [row for row in result["all_rows"] if row["trimestre"] == period]
         result["periodo_selecionado"] = period
         result["notes"] = result["notes"][:-1] + ["O seletor de período escolhe o trimestre da tabela. Os filtros demográficos globais não são aplicados. Use os grupos deste painel."]
         result["provenance"]["periodo_selecionado"] = period
     return result
+
+
+def evolucao_regional_anual(source, period, filters):
+    if source != "historico":
+        return {"status": "unavailable", "message": "Selecione a série histórica ponderada para comparar a evolução anual das macroregiões."}
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_EVOLUCAO_ANUAL / "resumo_evolucao_regional_anual.json",
+        "44_evolucao_regional_anual.py", "Evolução anual da mediana · Brasil e macroregiões",
+        metodo="Medianas empíricas ponderadas da distribuição dos quatro trimestres; sem IC",
+    )
 
 
 def _serie_indicadores(source, period, filters, pasta, arquivo, script, conjunto, metodo):
@@ -867,6 +903,30 @@ def decomposicao_theil(source, period, filters):
         source, period, filters, HISTORICO_THEIL, "resumo_decomposicao_theil.json",
         "40_decompor_theil.py", "Theil do salário-hora · dentro e entre macroregiões",
         "Decomposição descritiva aditiva ponderada por V1028",
+    )
+
+
+def incerteza_desigualdade(source, period, filters):
+    return _serie_indicadores(
+        source, period, filters, HISTORICO_INCERTEZA_DESIGUALDADE, "resumo_incerteza_desigualdade.json",
+        "41_incerteza_desigualdade.py", "IC95% dos indicadores de desigualdade",
+        "Funções de influência por UPA/estrato e Woodruff simultâneo para P90/P10",
+    )
+
+
+def crescimento_salarial(source, period, filters):
+    return _serie_indicadores(
+        source, period, filters, HISTORICO_CRESCIMENTO, "resumo_crescimento_salarial.json",
+        "42_crescimento_salarial.py", "Crescimento real da média salarial",
+        "Covariância conjunta das médias por UPA/estrato na união de dois períodos",
+    )
+
+
+def rif_desigualdade(source, period, filters):
+    return _comparacao_m5(
+        source, period, filters, HISTORICO_RIF / "resumo_rif_desigualdade.json",
+        "43_rif_desigualdade.py", "Regressões RIF para Gini e Theil",
+        metodo="Scores conjuntos da regressão e da distribuição estimada por UPA/estrato",
     )
 
 

@@ -157,6 +157,11 @@ def mercado_trabalho(request: Request):
     return data.mercado_trabalho(*selection(request))
 
 
+@app.get("/api/evolucao-regional-anual")
+def evolucao_regional_anual(request: Request):
+    return data.evolucao_regional_anual(*selection(request))
+
+
 @app.get("/api/incerteza-descritiva")
 def incerteza_descritiva(request: Request):
     return data.incerteza_descritiva(*selection(request))
@@ -170,6 +175,21 @@ def decomposicao_theil(request: Request):
 @app.get("/api/sensibilidade-coortes")
 def sensibilidade_coortes(request: Request):
     return data.sensibilidade_coortes(*selection(request))
+
+
+@app.get("/api/incerteza-desigualdade")
+def incerteza_desigualdade(request: Request):
+    return data.incerteza_desigualdade(*selection(request))
+
+
+@app.get("/api/crescimento-salarial")
+def crescimento_salarial(request: Request):
+    return data.crescimento_salarial(*selection(request))
+
+
+@app.get("/api/rif-desigualdade")
+def rif_desigualdade(request: Request):
+    return data.rif_desigualdade(*selection(request))
 
 
 @app.get("/api/multicolinearidade-m5")

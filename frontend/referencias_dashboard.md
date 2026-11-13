@@ -1,5 +1,23 @@
 # Referência e decisões do dashboard
 
+## Emprego e evolução regional · referência de construção 13/11/2026
+
+Construção direta na identidade existente: mapa de UF, séries de intervalos
+e tabelas do mercado de trabalho são as referências principais. O planejamento
+consolidado pede jornada, composição do emprego, mais métricas no mapa e uma
+matriz região × ano. Os detalhes de foco e rótulos de `craft-details.md`
+orientam a acessibilidade; não há ferramentas Refero ativas nesta sessão.
+
+| Decisão | Referência | Aplicação |
+| --- | --- | --- |
+| Preservar painéis brancos, marinho e azul, densidade e seletores nativos | Mapa e painel de mercado existentes | Novos indicadores compartilham a mesma navegação local |
+| Uma unidade por gráfico e tabela, com denominador ao lado | Séries de IC95% e tabelas atuais | Seletor alterna percentuais, horas e reais sem misturar escalas |
+| Escala divergente com zero fixo para crescimento | Sinal econômico da variação e mapa atual | Perda em laranja, ganho em azul, com valores numéricos e legenda explícita |
+| Matriz anual com valores em todas as células e cabeçalhos nativos | Planejamento, item mapa de calor; tabelas do produto | Cinco regiões, anos nas colunas, rolagem local em telas pequenas e CSV completo |
+| Mediana anual e variação da mediana contra 2013 | Planejamento e domínio salarial descritivo | Agregar os quatro trimestres, sem tirar média de medianas; seleção global não altera o painel |
+| Exibir o critério previdenciário junto da informalidade | Variáveis realmente coletadas e definição oficial do IBGE | Não apresentar a proxy do projeto como taxa oficial baseada em CNPJ |
+
+
 Alvo de construção: os HTMLs locais `dashboard_salario_hora.html`,
 `inferencia_m5_autonomo.html` e `resultados_testes_reais.html`.
 Consulta em 16/10/2026. O Refero foi consultado, mas retornou
@@ -167,3 +185,15 @@ os limiares e as tabelas de comparação. Mantêm-se os tokens existentes,
 foco visível, controles nativos rotulados e tabelas equivalentes aos gráficos.
 Os intervalos das médias de células e os intervalos exploratórios dos
 coeficientes são identificados junto das medidas correspondentes.
+
+## Crescimento, RIF e navegação inferencial · 12/11/2026
+
+As séries com faixa de confiança existentes são a referência para os novos
+indicadores de desigualdade e crescimento. Rótulos e formatação explicitam
+índice, percentual ou reais conforme a medida. A tabela de contrastes do M5
+determina o formato da RIF, com unidades próprias de Gini e Theil.
+Os botões e o foco visível existentes, junto às orientações de acessibilidade
+do Refero em `craft-details.md`, determinam a navegação dos quatro grupos.
+Os painéis conservam seus controles e exportações. A troca de grupo atua
+sobre os painéis já carregados, com semântica tablist/tab/tabpanel e seleção
+persistente. Setas, Home e End acompanham o grupo ativo.

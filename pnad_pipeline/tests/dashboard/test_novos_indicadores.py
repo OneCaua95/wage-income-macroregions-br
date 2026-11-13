@@ -24,3 +24,6 @@ def test_series_fixas_preservam_grupos_e_filtros_ignorados(tmp_path, monkeypatch
     assert client.get("/api/incerteza-descritiva?fonte=real").json()["status"] == "unavailable"
     assert client.get("/api/decomposicao-theil?fonte=real").json()["status"] == "unavailable"
     assert client.get("/api/sensibilidade-coortes?fonte=real").json()["status"] == "unavailable"
+    assert client.get("/api/incerteza-desigualdade?fonte=real").json()["status"] == "unavailable"
+    assert client.get("/api/crescimento-salarial?fonte=real").json()["status"] == "unavailable"
+    assert client.get("/api/rif-desigualdade?fonte=real").json()["status"] == "unavailable"

@@ -36,7 +36,14 @@ S.incertezaMetric=saved.incertezaMetric || 'media';
 S.coorteScheme=saved.coorteScheme || 'historica';
 S.coorteId=saved.coorteId || '';
 S.theilMetric=saved.theilMetric || 'theil_entre';
-let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, robustezData, estabilidadeData, sensibilidadeUfData, sensibilidadeEmpregoData, multicolinearidadeData, residuosM5Data, dispersaoM5Data, influenciaM5Data, escalaM5Data, nominalRealM5Data, multiplicidadeM5Data, mercadoTrabalhoData, incertezaDescritivaData, sensibilidadeCoortesData, theilDecompositionData, predictionDiagnosticsData, smearingData, intervalData, cqrData, ufMapData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
+S.desigualdadeCiMetric=saved.desigualdadeCiMetric || 'gini';
+S.desigualdadeCiGroup=saved.desigualdadeCiGroup || 'Brasil';
+S.growthType=saved.growthType || 'desde_2013';
+S.growthGroup=saved.growthGroup || 'Brasil';
+S.rifMetric=saved.rifMetric || 'gini';
+S.inferenceGroup=saved.inferenceGroup || 'principais';
+S.annualMetric=saved.annualMetric || 'mediana';
+let catalog, current, modelData, inferData, educationData, selectionData, regionalData, pseudoData, inequalityData, groupGapData, oaxacaData, robustezData, estabilidadeData, sensibilidadeUfData, sensibilidadeEmpregoData, multicolinearidadeData, residuosM5Data, dispersaoM5Data, influenciaM5Data, escalaM5Data, nominalRealM5Data, multiplicidadeM5Data, mercadoTrabalhoData, incertezaDescritivaData, sensibilidadeCoortesData, theilDecompositionData, incertezaDesigualdadeData, crescimentoSalarialData, rifDesigualdadeData, predictionDiagnosticsData, smearingData, intervalData, cqrData, ufMapData, annualRegionalData, ufMapGeometry, controller, revision=0, educationRevision=0, selectionRevision=0, comparisonData, predictionData, seriesData;
 const tables = new Map();
 const selection = () => new URLSearchParams({fonte:S.source,periodo:S.period,...S.filters});
 const sourceData = () => catalog.sources.find(x=>x.id===S.source);
@@ -66,6 +73,8 @@ function download(name,type,body) {
 function csv(name,rows,provenance={}) {
   const enriched = rows.map(r=>({...r,fonte:provenance.conjunto || provenance.fonte || '',periodo:r.periodo ?? provenance.periodo ?? S.period,
     ponderacao:provenance.ponderacao || '',versao:provenance.versao || '',filtros:JSON.stringify(provenance.filtros || S.filters),
+    ...(provenance.criterio_informalidade?{criterio_informalidade:provenance.criterio_informalidade}:{}),
+    ...(provenance.referencia_crescimento?{referencia_crescimento:provenance.referencia_crescimento}:{}),
     ...(provenance.run_id?{execucao_modelo:provenance.run_id,modelo_sha256:provenance.modelo_sha256,amostra_sha256:r.amostra_sha256 ?? provenance.amostra_sha256,definicao_vies:provenance.definicao_vies}:{}),
     ...(provenance.decisao_sha256?{fator_duan:provenance.fator_duan,decisao_sha256:provenance.decisao_sha256}:{}),
     ...(provenance.conversao?{conversao:r.conversao ?? provenance.conversao}:{})}));
@@ -102,7 +111,7 @@ $('#source').onchange=e=>{S.source=e.target.value;buildFilters();refresh();};
 $('#period').onchange=e=>{S.period=e.target.value;refresh();};
 $('#clear-filters').onclick=()=>{S.filters={};buildFilters();refresh();};
 $('#toggle-filters').onclick=()=>{const button=$('#toggle-filters');const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',open);$('#filter-fields').hidden=!open;};
-$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,robustez_m5:robustezData,estabilidade_m5:estabilidadeData,sensibilidade_uf_m5:sensibilidadeUfData,sensibilidade_emprego_m5:sensibilidadeEmpregoData,multicolinearidade_m5:multicolinearidadeData,residuos_m5:residuosM5Data,dispersao_m5:dispersaoM5Data,influencia_m5:influenciaM5Data,escala_m5:escalaM5Data,nominal_real_m5:nominalRealM5Data,multiplicidade_m5:multiplicidadeM5Data,mercado_trabalho:mercadoTrabalhoData,incerteza_descritiva:incertezaDescritivaData,sensibilidade_coortes:sensibilidadeCoortesData,decomposicao_theil:theilDecompositionData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,comparacao_intervalos:cqrData,mapa_por_uf:ufMapData,comparacao:comparisonData,previsao:predictionData},null,2));
+$('#export-all').onclick=()=>download(`pnad_${S.source}_${S.period}_${S.view}.json`,'application/json',JSON.stringify({exportado_em:new Date().toISOString(),selecao:{...S},descritiva:current,serie:seriesData,modelos:modelData,inferencia:inferData,retorno_educacao:educationData,selecao_ocupacional:selectionData,heterogeneidade_regional:regionalData,pseudopainel:pseudoData,desigualdade_salarial:inequalityData,diferencas_brutas_ajustadas:groupGapData,decomposicao_oaxaca:oaxacaData,robustez_m5:robustezData,estabilidade_m5:estabilidadeData,sensibilidade_uf_m5:sensibilidadeUfData,sensibilidade_emprego_m5:sensibilidadeEmpregoData,multicolinearidade_m5:multicolinearidadeData,residuos_m5:residuosM5Data,dispersao_m5:dispersaoM5Data,influencia_m5:influenciaM5Data,escala_m5:escalaM5Data,nominal_real_m5:nominalRealM5Data,multiplicidade_m5:multiplicidadeM5Data,mercado_trabalho:mercadoTrabalhoData,incerteza_descritiva:incertezaDescritivaData,sensibilidade_coortes:sensibilidadeCoortesData,decomposicao_theil:theilDecompositionData,incerteza_desigualdade:incertezaDesigualdadeData,crescimento_salarial:crescimentoSalarialData,rif_desigualdade:rifDesigualdadeData,diagnostico_previsao:selectedPredictionDiagnostic(),comparacao_duan:smearingData,intervalos_previsao:intervalData,comparacao_intervalos:cqrData,mapa_por_uf:ufMapData,evolucao_regional_anual:annualRegionalData,comparacao:comparisonData,previsao:predictionData},null,2));
 
 function provenance(p) {
   $('#context-line').innerHTML=`${badge(p.ponderacao,p.ponderacao==='V1028'?'green':'amber')}<strong>${esc(S.period)}</strong><span>·</span><span>${esc(p.dominio)}</span><span>·</span><span>Preços de janeiro/2026</span><span>·</span><span>Processamento: ${esc(date(p.processado_em))}</span>`;
@@ -186,8 +195,8 @@ const groupColumns=[{key:'grupo',label:'Grupo'},{key:'n',label:'N amostral',form
   {key:'populacao',label:'População estimada',format:v=>fmt(v,0)}];
 function showGroup(r){detail(r.grupo,[['Período',S.period],['Observações no domínio',fmt(r.n,0)],['Salário-hora válido',fmt(stat(r).n_validos,0)],['Média',money(stat(r).media)+'/h'],['Desvio-padrão descritivo',money(stat(r).desvio_padrao)+'/h'],['Formalidade',pct(r.taxa_formalidade)],['Denominador da taxa',fmt(r.denominador_formalidade,0)+' · '+r.denominador_formalidade_unidade],['Ponderação',current.provenance.ponderacao]],'Médias e taxas usam domínios diferentes; os denominadores são específicos de cada indicador.');}
 
-const ufMapMetricLabel = metric => metric === 'mediana' ? 'Mediana do salário-hora real' : 'Razão P90/P10';
-const ufMapMetricValue = value => value == null ? 'Sem estimativa' : S.mapMetric === 'mediana' ? money(value) + '/h' : fmt(value, 2) + '×';
+const ufMapMetricLabel = metric => ({mediana:'Mediana do salário-hora real',p90_p10:'Razão P90/P10',crescimento_media_pct:'Crescimento da média desde 2013T1',informalidade_pct:'Informalidade · critério do projeto'})[metric];
+const ufMapMetricValue = value => value == null ? 'Sem estimativa' : S.mapMetric === 'mediana' ? money(value) + '/h' : S.mapMetric === 'p90_p10' ? fmt(value, 2) + '×' : fmt(value,2)+'%';
 function selectUF(code) {
   if (String(S.filters.uf || '') === String(code)) delete S.filters.uf;
   else S.filters.uf = String(code);
@@ -219,15 +228,17 @@ async function renderUFMap(data) {
     const selected = S.filters.uf ? String(S.filters.uf) : '';
     const selectedRow = selected ? byUF.get(selected) : data.brazil;
     const values = rows.map(row => row[S.mapMetric]).filter(value => Number.isFinite(value));
-    const min = values.length ? Math.min(...values) : null;
-    const max = values.length ? Math.max(...values) : null;
-    const colors = ['#e8f0ff','#c9dcff','#9bbcff','#6794ed','#2f6df6'];
+    const growth = S.mapMetric === 'crescimento_media_pct';
+    const extent = values.length ? Math.max(...values.map(Math.abs),.01) : null;
+    const min = values.length ? (growth ? -extent : Math.min(...values)) : null;
+    const max = values.length ? (growth ? extent : Math.max(...values)) : null;
+    const colors = growth ? ['#b76516','#edc597','#f3f5f8','#9bbcff','#2f6df6'] : ['#e8f0ff','#c9dcff','#9bbcff','#6794ed','#2f6df6'];
     const colorFor = value => {
       if (value == null || min == null) return '#e7ebf0';
       const position = max === min ? 0.5 : (value - min) / (max - min);
       return colors[Math.min(colors.length - 1, Math.floor(position * colors.length))];
     };
-    const labelValue = value => value == null ? 'Sem estimativa' : (S.mapMetric === 'mediana' ? money(value) + '/h' : fmt(value,2) + ' vezes');
+    const labelValue = ufMapMetricValue;
       // Rótulos costeiros e do DF usam chamadas curtas para não se sobrepor.
       const labelLayout = {
         '24': { x: 674, y: 199, anchor: 'start', leader: true }, // RN
@@ -245,7 +256,7 @@ async function renderUFMap(data) {
         const labelPosition = labelLayout[String(feature.code)] || {
           x: feature.cx, y: feature.cy, anchor: 'middle', leader: false,
         };
-      const accessible = label + ': ' + labelValue(value) + (row ? '; ' + fmt(row.n_salarios,0) + ' salários válidos' : '; sem observações');
+      const accessible = label + ': ' + labelValue(value) + (row ? '; ' + fmt(S.mapMetric==='informalidade_pct'?row.n_formalidade:row.n_salarios,0) + ' registros no denominador' : '; sem observações');
       return '<g class="uf-map-state' + (selectedState ? ' is-selected' : '') + '" data-uf="' + esc(feature.code) + '" role="button" tabindex="' + (selectedState || (!selected && index === 0) ? '0' : '-1') + '" aria-pressed="' + (selectedState ? 'true' : 'false') + '" aria-label="Selecionar ' + esc(accessible) + '">' +
         '<path class="uf-map-shape" d="' + feature.d + '" fill="' + colorFor(value) + '" fill-rule="evenodd"><title>' + esc(accessible) + '</title></path>' +
           (labelPosition.leader ? '<path class="uf-map-label-leader" d="M ' + feature.cx + ' ' + feature.cy + ' L ' + (labelPosition.x - 4) + ' ' + labelPosition.y + '" aria-hidden="true"></path>' : '') +
@@ -253,7 +264,7 @@ async function renderUFMap(data) {
         '<circle class="uf-map-hit" cx="' + feature.cx + '" cy="' + feature.cy + '" r="8" aria-hidden="true"></circle></g>';
     }).join('');
     figure.innerHTML = '<svg viewBox="' + esc(ufMapGeometry.viewBox) + '" role="group" aria-labelledby="uf-map-title uf-map-desc">' +
-      '<title id="uf-map-title">Mapa interativo do salário-hora por unidade da federação</title>' +
+      '<title id="uf-map-title">' + esc(ufMapMetricLabel(S.mapMetric)) + ' por unidade da federação</title>' +
       '<desc id="uf-map-desc">Selecione uma UF com clique ou teclado. Os dados acompanham os filtros ativos, exceto o filtro de UF, para manter o mapa completo.</desc>' +
       features + '</svg>';
     const metricValue = row => row ? ufMapMetricValue(row[S.mapMetric]) : 'Sem estimativa';
@@ -275,12 +286,17 @@ async function renderUFMap(data) {
       '<div><dt>P10</dt><dd>' + esc(selectedRow?.p10 == null ? '—' : money(selectedRow.p10) + '/h') + '</dd></div>' +
       '<div><dt>P90</dt><dd>' + esc(selectedRow?.p90 == null ? '—' : money(selectedRow.p90) + '/h') + '</dd></div>' +
       '<div><dt>P90/P10</dt><dd>' + esc(selectedRow?.p90_p10 == null ? '—' : fmt(selectedRow.p90_p10,2) + '×') + '</dd></div>' +
+      '<div><dt>Crescimento da média desde 2013T1</dt><dd>' + (selectedRow?.crescimento_media_pct == null ? '—' : fmt(selectedRow.crescimento_media_pct,2)+'%') + '</dd></div>' +
+      '<div><dt>Informalidade · critério do projeto</dt><dd>' + (selectedRow?.informalidade_pct == null ? '—' : fmt(selectedRow.informalidade_pct,2)+'%') + '</dd></div>' +
+      '<div><dt>Ocupados classificados</dt><dd>' + fmt(selectedRow?.n_formalidade,0) + '</dd></div>' +
+      '<div><dt>Sem classificação de formalidade</dt><dd>' + fmt(selectedRow?.n_sem_classificacao_formalidade,0) + '</dd></div>' +
+      '<div><dt>Salários na referência 2013T1</dt><dd>' + fmt(selectedRow?.n_salarios_base,0) + '</dd></div>' +
       '<div><dt>Salários válidos</dt><dd>' + fmt(n,0) + '</dd></div>' +
       '<div><dt>População estimada · V1028</dt><dd>' + fmt(population,0) + '</dd></div></dl>' + clearButton;
     if (selected && $('#uf-map-clear')) $('#uf-map-clear').onclick = () => selectUF(selected);
     const gradient = 'linear-gradient(90deg,' + colors.map((color,index)=>color+' '+(index*20)+'%, '+color+' '+((index+1)*20)+'%').join(',') + ')';
-    legend.innerHTML = '<span>Menor</span><div class="uf-map-colorbar" role="img" aria-label="Escala de cor contínua do menor para o maior valor" style="background:' + gradient + '"></div><span>Maior</span>' +
-      '<small>' + (min == null ? 'Sem valores para colorir' : esc(labelValue(min)) + ' — ' + esc(labelValue(max))) + '</small>';
+    legend.innerHTML = '<span>Menor</span><div class="uf-map-colorbar" role="img" aria-label="Escala em cinco faixas do menor para o maior valor" style="background:' + gradient + '"></div><span>Maior</span>' +
+      '<small>' + (min == null ? 'Sem valores para colorir' : esc(labelValue(min)) + (growth?' · centro em 0% · ':' — ') + esc(labelValue(max))) + ' · cinza: sem estimativa</small>';
     const nodes = [...figure.querySelectorAll('[data-uf]')];
     nodes.forEach((node,index) => {
       node.onclick = () => selectUF(node.dataset.uf);
@@ -306,6 +322,9 @@ async function renderUFMap(data) {
       {key:'p10',label:'P10 R$/h',format:value=>money(value)},
       {key:'p90',label:'P90 R$/h',format:value=>money(value)},
       {key:'p90_p10',label:'P90/P10',format:value=>value == null ? '—' : fmt(value,2)+'×'},
+      {key:'crescimento_media_pct',label:'Crescimento da média (%) · base 2013T1',format:value=>fmt(value,2)},
+      {key:'informalidade_pct',label:'Informalidade (%) · critério do projeto',format:value=>fmt(value,2)},
+      {key:'n_formalidade',label:'N · ocupados classificados',format:value=>fmt(value,0)},
       {key:'n_salarios',label:'N válido',format:value=>fmt(value,0)},
       {key:'populacao_v1028',label:'População V1028',format:value=>fmt(value,0)},
     ],tableProv,row=>selectUF(row.uf));
@@ -319,20 +338,24 @@ async function renderUFMap(data) {
 }
 function renderOverview() {
   const historical=modelData.historical,lead=historical.metricas_melhor_modelo || {},m=inferData.model;
-  $('#content').innerHTML=kpis(current.summary)+mercadoTrabalhoPanel()+incertezaDescritivaPanel()+`<div class="grid">${panel('Evolução do salário-hora','Média trimestral · mesmo recorte e mesma fonte','<div id="series-chart"></div>','<button class="button secondary" id="export-series">↓ CSV</button>')}${panel('Comparação entre grupos','Médias do período selecionado',bars(current.groups),groupSelect())}</div>`+
+  $('#content').innerHTML=kpis(current.summary)+mercadoTrabalhoPanel()+incertezaDescritivaPanel()+crescimentoSalarialPanel()+annualRegionalPanel()+`<div class="grid">${panel('Evolução do salário-hora','Média trimestral · mesmo recorte e mesma fonte','<div id="series-chart"></div>','<button class="button secondary" id="export-series">↓ CSV</button>')}${panel('Comparação entre grupos','Médias do período selecionado',bars(current.groups),groupSelect())}</div>`+
     `<div class="grid equal">${panel('Modelo preditivo recomendado','Ranking histórico exploratório não ponderado',`<div class="method-card">${badge('Benchmark histórico','amber')}<h3>${esc(historical.melhor_modelo_por_rmse_log_teste || 'Resultado indisponível')}</h3><div class="model-metrics"><span><strong>${fmt(lead.rmse_log,4)}</strong>RMSE log · teste</span><span><strong>${money(lead.mae_salario_hora)}</strong>MAE R$/h · teste</span><span><strong>${fmt(lead.r2_log,3)}</strong>R² log · teste</span></div><p class="note">Treino 2013–2022 · validação 2023–2024 · teste 2025. Seleção histórica pelo teste; a previsão operacional usa uma nova execução selecionada na validação.</p><a href="#previsao">Consultar previsão por perfil →</a></div>`)}${panel('Modelo de associação disponível','M5 ponderado na fonte selecionada',`<div class="method-card">${badge('M5 · V1028 + desenho','green')}<h3>Regressão ponderada M5</h3><p class="note">Linearização por UPA dentro de estrato. Sem comparação válida de especificações por erro de validação.</p>${m?`<div class="model-metrics"><span><strong>${fmt(m.n_observacoes_elegiveis,0)}</strong>Observações elegíveis</span><span><strong>${fmt(m.n_upas_desenho,0)}</strong>UPAs</span><span><strong>${fmt(m.n_estratos_desenho,0)}</strong>Estratos</span></div>`:`<p class="explanation">${esc(inferData.message)}</p>`}<a href="#associacao">Explorar associações e intervalos →</a></div>`)}</div>`+
     panel('Resultados por grupo','Selecione um grupo na tabela para consultar os denominadores.','<div id="group-table"></div>');
   makeTable('group-table',current.groups,groupColumns,current.provenance,showGroup);
-  $('#group-select').onchange=e=>{S.group=e.target.value;refresh();};  const mapPanel = panel('Mapa por UF','Salário-hora real por estado · período e filtros ativos',
-    '<div class="uf-map-controls"><label>Métrica<select id="uf-map-metric"><option value="mediana">Mediana do salário-hora</option><option value="p90_p10">Razão P90/P10</option></select></label><button class="button secondary" id="export-uf-map" type="button">↓ Exportar CSV</button></div><div class="uf-map-layout"><div><div class="uf-map-figure" id="uf-map-figure"></div><div class="uf-map-legend" id="uf-map-legend"></div></div><aside class="uf-map-detail" id="uf-map-detail" aria-live="polite"></aside></div><p class="note" id="uf-map-note">O mapa acompanha os filtros ativos, exceto a UF selecionada, para manter todos os estados visíveis. Clique em uma UF para aplicar o filtro global.</p><details class="uf-map-table-details"><summary>Ver tabela de valores por UF</summary><div id="uf-map-table"></div></details>');
+  $('#group-select').onchange=e=>{S.group=e.target.value;refresh();};  const mapPanel = panel('Mapa por UF','Salários e emprego por estado · período e filtros ativos',
+    '<div class="uf-map-controls"><label>Métrica<select id="uf-map-metric"><option value="mediana">Mediana do salário-hora</option><option value="p90_p10">Razão P90/P10</option><option value="crescimento_media_pct">Crescimento da média desde 2013T1 (%)</option><option value="informalidade_pct">Informalidade (%) · critério do projeto</option></select></label><button class="button secondary" id="export-uf-map" type="button">↓ Exportar CSV</button></div><div class="uf-map-layout"><div><div class="uf-map-figure" id="uf-map-figure"></div><div class="uf-map-legend" id="uf-map-legend"></div></div><aside class="uf-map-detail" id="uf-map-detail" aria-live="polite"></aside></div><p class="note" id="uf-map-note">O mapa acompanha os filtros ativos, exceto a UF selecionada, para manter todos os estados visíveis. Clique em uma UF para aplicar o filtro global.</p><details class="uf-map-table-details"><summary>Ver tabela de valores por UF</summary><div id="uf-map-table"></div></details>');
   $('#content > .kpis').insertAdjacentHTML('afterend',mapPanel);
+  if(ufMapData?.metrics&&!ufMapData.metrics.includes(S.mapMetric))S.mapMetric='mediana';
   $('#uf-map-metric').value=S.mapMetric;
+  if(ufMapData?.metrics)for(const option of $('#uf-map-metric').options)option.disabled=!ufMapData.metrics.includes(option.value);
   $('#uf-map-metric').onchange=event=>{S.mapMetric=event.target.value;save();renderUFMap(ufMapData);};
   $('#export-uf-map').onclick=()=>{if(ufMapData?.rows)csv('pnad_mapa_ufs_'+S.period,ufMapData.rows.map(row=>({...row,metrica_exibida:S.mapMetric})),ufMapData.provenance);};
   if(ufMapData?.notes)$('#uf-map-note').textContent=ufMapData.notes.join(' ');
   renderUFMap(ufMapData);
   wireMercadoTrabalho();
   wireIncertezaDescritiva();
+  wireCrescimentoSalarial();
+  wireAnnualRegional();
 }
 
 function renderDescriptive() {
@@ -915,7 +938,7 @@ function wireSelection() {
     {key:'p_valor_ipw_bh',label:'p ajustado BH',format:pfmt},
   ],selectionData.provenance);
 }
-function confidenceTrendChart(rows,label) {
+function confidenceTrendChart(rows,label,format=money,axisLabel='R$/hora · IC95% pontual') {
   rows=[...rows].filter(r=>r.estimativa!=null&&Number.isFinite(Number(r.estimativa))).sort((a,b)=>a.trimestre.localeCompare(b.trimestre));
   if(!rows.length)return empty('Série indisponível','Não há estimativas para este grupo.');
   const w=800,h=300,left=75,right=775,top=30,bottom=246;
@@ -928,7 +951,122 @@ function confidenceTrendChart(rows,label) {
   const outline=rows.map((r,i)=>`${x(i)},${y(r.ic_superior)}`).concat(rows.map((r,i)=>`${x(i)},${y(r.ic_inferior)}`).reverse()).join(' ');
   const band=complete?`<polygon points="${outline}" fill="#2f6df6" fill-opacity=".14"/>`:'';
   const ticks=Array.from({length:5},(_,i)=>low+(high-low)*i/4),labels=[...new Set([0,Math.floor((rows.length-1)/2),rows.length-1])];
-  return `<div class="inequality-chart-wrap"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)} por trimestre com intervalos de confiança de 95%">${ticks.map(v=>`<line class="grid-line" x1="${left}" x2="${right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${fmt(v,2)}</text>`).join('')}${band}<polyline class="line" points="${line}"/>${rows.map((r,i)=>`<g tabindex="0"><title>${esc(r.trimestre)} · ${money(r.estimativa)} · IC95% ${money(r.ic_inferior)} a ${money(r.ic_superior)}</title>${r.ic_inferior!=null&&r.ic_superior!=null?`<line x1="${x(i)}" x2="${x(i)}" y1="${y(r.ic_inferior)}" y2="${y(r.ic_superior)}" stroke="#1d4fbe" stroke-opacity=".5"/>`:''}<circle cx="${x(i)}" cy="${y(r.estimativa)}" r="3" fill="#2f6df6"/></g>`).join('')}${labels.map(i=>`<text x="${x(i)}" y="269" text-anchor="middle">${esc(rows[i].trimestre)}</text>`).join('')}<text x="12" y="17">R$/hora · IC95% pontual</text><text x="${(left+right)/2}" y="295" text-anchor="middle">Trimestre · escala ajustada aos valores</text></svg></div>`;
+  return `<div class="inequality-chart-wrap"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)} por trimestre com intervalos de confiança de 95%">${ticks.map(v=>`<line class="grid-line" x1="${left}" x2="${right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${format(v)}</text>`).join('')}${band}<polyline class="line" points="${line}"/>${rows.map((r,i)=>`<g tabindex="0"><title>${esc(r.trimestre)} · ${format(r.estimativa)} · IC95% ${format(r.ic_inferior)} a ${format(r.ic_superior)}</title>${r.ic_inferior!=null&&r.ic_superior!=null?`<line x1="${x(i)}" x2="${x(i)}" y1="${y(r.ic_inferior)}" y2="${y(r.ic_superior)}" stroke="#1d4fbe" stroke-opacity=".5"/>`:''}<circle cx="${x(i)}" cy="${y(r.estimativa)}" r="3" fill="#2f6df6"/></g>`).join('')}${labels.map(i=>`<text x="${x(i)}" y="269" text-anchor="middle">${esc(rows[i].trimestre)}</text>`).join('')}<text x="12" y="17">${esc(axisLabel)}</text><text x="${(left+right)/2}" y="295" text-anchor="middle">Trimestre · escala ajustada aos valores</text></svg></div>`;
+}
+
+function incertezaDesigualdadePanel() {
+  const d=incertezaDesigualdadeData,title='Precisão dos indicadores de desigualdade';
+  if(d?.status!=='ok')return panel(title,'Brasil e macroregiões · IC95% pontuais',empty('Intervalos indisponíveis',d?.message||'Selecione a série histórica ponderada.'));
+  const labels={gini:'Gini',theil_t:'Theil T',razao_P90_P10:'P90/P10',participacao_top10_pct:'Participação dos 10% maiores (%)'};
+  const groups=[...new Set(d.all_rows.map(r=>r.grupo))];
+  if(!labels[S.desigualdadeCiMetric])S.desigualdadeCiMetric='gini';
+  if(!groups.includes(S.desigualdadeCiGroup))S.desigualdadeCiGroup='Brasil';
+  const trend=d.all_rows.filter(r=>r.indicador===S.desigualdadeCiMetric&&r.grupo===S.desigualdadeCiGroup);
+  return `<section class="panel" id="desigualdade-ci-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${esc(d.periodo_selecionado)} · V1028 · desenho amostral</p></div><button class="button secondary" id="export-desigualdade-ci" type="button">↓ CSV · intervalos da desigualdade</button></div>
+    <div class="inline-options"><label>Indicador de desigualdade<select id="desigualdade-ci-metric">${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${key===S.desigualdadeCiMetric?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo dos intervalos de desigualdade<select id="desigualdade-ci-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.desigualdadeCiGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${confidenceTrendChart(trend,labels[S.desigualdadeCiMetric]+' · '+S.desigualdadeCiGroup,v=>fmt(v,3),labels[S.desigualdadeCiMetric]+' · IC95% pontual')}</div><div id="desigualdade-ci-table"></div>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireIncertezaDesigualdade() {
+  const d=incertezaDesigualdadeData;
+  if(d?.status!=='ok')return;
+  makeTable('desigualdade-ci-table',d.rows.filter(r=>r.indicador===S.desigualdadeCiMetric),[
+    {key:'grupo',label:'Grupo'},{key:'estimativa',label:'Estimativa',format:v=>fmt(v,4)},
+    {key:'ic_inferior',label:'IC95% inferior',format:v=>fmt(v,4)},{key:'ic_superior',label:'IC95% superior',format:v=>fmt(v,4)},
+    {key:'n_salarios',label:'Salários válidos',format:v=>fmt(v,0)},{key:'metodo',label:'Método'},
+  ],d.provenance);
+  const update=()=>{save();$('#desigualdade-ci-panel').outerHTML=incertezaDesigualdadePanel();wireIncertezaDesigualdade();};
+  $('#desigualdade-ci-metric').onchange=e=>{S.desigualdadeCiMetric=e.target.value;update();};
+  $('#desigualdade-ci-group').onchange=e=>{S.desigualdadeCiGroup=e.target.value;update();};
+  $('#export-desigualdade-ci').onclick=()=>csv('pnad_incerteza_desigualdade',d.all_rows,d.provenance);
+}
+
+function crescimentoSalarialPanel() {
+  const d=crescimentoSalarialData,title='Crescimento real da média salarial';
+  if(d?.status!=='ok')return panel(title,'Brasil e macroregiões · comparação temporal',empty('Crescimento indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  const labels={desde_2013:'Desde 2013T1',interanual:'Mesmo trimestre do ano anterior'};
+  const groups=[...new Set(d.all_rows.map(r=>r.grupo))];
+  if(!labels[S.growthType])S.growthType='desde_2013';
+  if(!groups.includes(S.growthGroup))S.growthGroup='Brasil';
+  const trend=d.all_rows.filter(r=>r.tipo===S.growthType&&r.grupo===S.growthGroup);
+  return `<section class="panel" id="growth-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${esc(d.periodo_selecionado)} · médias ponderadas · IC95% com covariância temporal</p></div><button class="button secondary" id="export-growth" type="button">↓ CSV · crescimento completo</button></div>
+    <div class="inline-options"><label>Comparação do crescimento<select id="growth-type">${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${key===S.growthType?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo do crescimento<select id="growth-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.growthGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${confidenceTrendChart(trend,labels[S.growthType]+' · '+S.growthGroup,v=>fmt(v,1)+'%','Variação real (%) · IC95% pontual')}</div><div id="growth-table"></div>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireCrescimentoSalarial() {
+  const d=crescimentoSalarialData;
+  if(d?.status!=='ok')return;
+  makeTable('growth-table',d.rows.filter(r=>r.tipo===S.growthType),[
+    {key:'grupo',label:'Grupo'},{key:'referencia',label:'Período-base'},
+    {key:'estimativa',label:'Crescimento (%)',format:v=>fmt(v,2)},
+    {key:'ic_inferior',label:'IC95% inferior (%)',format:v=>fmt(v,2)},{key:'ic_superior',label:'IC95% superior (%)',format:v=>fmt(v,2)},
+    {key:'media_base',label:'Média-base (R$/h)',format:money},{key:'media_atual',label:'Média atual (R$/h)',format:money},
+    {key:'n_upas_compartilhadas',label:'UPAs compartilhadas',format:v=>fmt(v,0)},
+  ],d.provenance);
+  const update=()=>{save();$('#growth-panel').outerHTML=crescimentoSalarialPanel();wireCrescimentoSalarial();};
+  $('#growth-type').onchange=e=>{S.growthType=e.target.value;update();};
+  $('#growth-group').onchange=e=>{S.growthGroup=e.target.value;update();};
+  $('#export-growth').onclick=()=>csv('pnad_crescimento_salarial',d.all_rows,d.provenance);
+}
+
+function rifDesigualdadePanel() {
+  const d=rifDesigualdadeData,title='Associações com a desigualdade · regressões RIF';
+  if(d?.status!=='ok')return panel(title,'Gini e Theil · controles do M5',empty('RIF indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  if(!['gini','theil_t'].includes(S.rifMetric))S.rifMetric='gini';
+  return `<section class="panel" id="rif-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${esc(d.periodo)} · ${fmt(d.summary.n_observacoes,0)} registros · V1028</p></div><button class="button secondary" id="export-rif" type="button">↓ CSV · contrastes RIF</button></div>
+    <label>Distribuição analisada na RIF<select id="rif-metric"><option value="gini" ${S.rifMetric==='gini'?'selected':''}>Gini · pontos na escala 0–100</option><option value="theil_t" ${S.rifMetric==='theil_t'?'selected':''}>Theil T · unidades originais</option></select></label>
+    <div id="rif-table" aria-live="polite"></div>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+}
+
+function wireRifDesigualdade() {
+  const d=rifDesigualdadeData;
+  if(d?.status!=='ok')return;
+  makeTable('rif-table',d.rows.filter(r=>r.estatistica===S.rifMetric),[
+    {key:'contraste',label:'Contraste'},{key:'estimativa',label:'Associação RIF',format:v=>fmt(v,5)},
+    {key:'ic_inferior',label:'IC95% inferior',format:v=>fmt(v,5)},{key:'ic_superior',label:'IC95% superior',format:v=>fmt(v,5)},
+    {key:'erro_padrao',label:'Erro-padrão',format:v=>fmt(v,5)},{key:'p_holm',label:'p ajustado Holm',format:pfmt},
+    {key:'unidade',label:'Unidade'},
+  ],d.provenance);
+  $('#rif-metric').onchange=e=>{S.rifMetric=e.target.value;save();$('#rif-panel').outerHTML=rifDesigualdadePanel();wireRifDesigualdade();};
+  $('#export-rif').onclick=()=>csv('pnad_rif_desigualdade',d.rows,d.provenance);
+}
+
+function organizeInference() {
+  const content=$('#content');
+  const grupos={principais:'Resultados principais',diagnosticos:'Diagnósticos',decomposicoes:'Desigualdade e decomposições',coortes:'Pseudo-painel'};
+  const diagnosticos=new Set(['Testes conjuntos e múltiplas comparações','Robustez do M5 a salários extremos','Estabilidade anual do M5','M5 com e sem efeitos fixos de UF','Escolaridade com e sem controles do emprego','M5 com salário-hora real e nominal','Multicolinearidade no M5 ponderado','Resíduos do M5 ponderado','Dispersão dos resíduos nas faixas salariais','Influência de observações no M5']);
+  const decomposicoes=new Set(['Diferenças brutas e ajustadas','Estimativas por grupo','Decomposição Oaxaca–Blinder','Regressões quantílicas','Associações com a desigualdade · regressões RIF']);
+  const coortes=new Set(['Pseudo-painel por coortes','Incerteza das médias e definição das coortes']);
+  const panels=[...content.children].filter(el=>el.classList.contains('panel'));
+  const wrappers={};
+  for(const [id,label] of Object.entries(grupos)) {
+    const section=document.createElement('div');
+    section.id='inference-group-'+id;section.setAttribute('role','tabpanel');section.setAttribute('aria-labelledby','inference-tab-'+id);section.tabIndex=0;
+    wrappers[id]=section;content.append(section);
+  }
+  for(const panel of panels) {
+    const titulo=panel.querySelector('h2')?.textContent||'';
+    const id=diagnosticos.has(titulo)?'diagnosticos':decomposicoes.has(titulo)?'decomposicoes':coortes.has(titulo)?'coortes':'principais';
+    wrappers[id].append(panel);
+  }
+  const nav=document.createElement('div');nav.className='inference-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Grupos da análise inferencial');
+  nav.innerHTML=Object.entries(grupos).map(([id,label])=>`<button type="button" class="button secondary" role="tab" id="inference-tab-${id}" aria-controls="inference-group-${id}" data-inference-group="${id}">${label}</button>`).join('');
+  content.prepend(nav);
+  const activate=(id,focus=false)=>{
+    if(!grupos[id])id='principais';
+    S.inferenceGroup=id;save();
+    nav.querySelectorAll('button').forEach(button=>{const selected=button.dataset.inferenceGroup===id;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;if(selected&&focus)button.focus();});
+    Object.entries(wrappers).forEach(([key,section])=>{section.hidden=key!==id;});
+  };
+  nav.onclick=e=>{const button=e.target.closest('button[data-inference-group]');if(button)activate(button.dataset.inferenceGroup);};
+  nav.onkeydown=e=>{
+    const ids=Object.keys(grupos),index=ids.indexOf(S.inferenceGroup);
+    const steps={ArrowLeft:-1,ArrowRight:1,Home:-index,End:ids.length-1-index};
+    if(steps[e.key]===undefined)return;
+    e.preventDefault();activate(ids[(index+steps[e.key]+ids.length)%ids.length],true);
+  };
+  activate(S.inferenceGroup);
 }
 
 function incertezaDescritivaPanel() {
@@ -1072,7 +1210,7 @@ function renderInequality() {
   const metricCards=selected?`<div class="mini-metrics inequality-summary"><div><strong>${money(selected.P10)}</strong><span>P10 · salário-hora</span></div><div><strong>${money(selected.P50)}</strong><span>P50 · mediana</span></div><div><strong>${money(selected.P90)}</strong><span>P90 · salário-hora</span></div><div><strong>${fmt(selected.razao_P90_P10,2)}</strong><span>Razão P90/P10</span></div><div><strong>${fmt(selected.gini,3)}</strong><span>Gini · 0 a 1</span></div><div><strong>${fmt(selected.theil_t,3)}</strong><span>Theil T</span></div><div><strong>${fmt(selected.participacao_top10_pct,1)}%</strong><span>Participação dos 10% maiores salários</span></div><div><strong>${fmt(selected.razao_P50_P10,2)}</strong><span>Razão P50/P10</span></div><div><strong>${fmt(selected.razao_P90_P50,2)}</strong><span>Razão P90/P50</span></div></div>`:empty('Grupo sem dados neste período','Escolha outro grupo ou período para consultar a distribuição.');
   $('#content').innerHTML=panel('Distribuição do salário-hora real','Percentis e desigualdade entre ocupados de 25 a 65 anos · série ponderada por V1028',`<div class="inline-options inequality-controls"><label>Comparar por<select id="inequality-dimension">${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${S.inequalityDimension===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Grupo<select id="inequality-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.inequalityGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><span class="badge">${esc(data.periodo_selecionado)} · valores reais</span></div>${metricCards}<p class="note inequality-note">P10, P25, P50, P75 e P90 usam V1028 e a inversa da distribuição empírica ponderada, sem interpolação. Theil T usa a média ponderada de (salário/média) × log(salário/média). A participação do topo corresponde aos 10% da população ponderada com maiores salários, com peso fracionado na fronteira. Gini e Lorenz descrevem o salário-hora individual de pessoas ocupadas; não medem renda domiciliar. ${fmt(selected?.n_observacoes,0)} registros no grupo selecionado neste trimestre. Filtros globais não reestimam esta análise.</p>`)+
     `<div class="grid equal inequality-visuals">${panel('Evolução da desigualdade','Cada ponto representa um trimestre da série histórica.',`<label>Indicador na série<select id="inequality-metric">${Object.entries(metrics).map(([key,label])=>`<option value="${key}" ${key===S.inequalityMetric?'selected':''}>${label}</option>`).join('')}</select></label>`+indicatorTrendChart(trend,S.inequalityMetric,metrics[S.inequalityMetric]))}${panel('Curva de Lorenz','A linha tracejada representa igualdade perfeita.',lorenzChart(lorenz))}</div>`+
-    panel('Distribuição por grupo no trimestre','Percentis e medidas de desigualdade do período selecionado.','<div id="inequality-table"></div>')+theilDecompositionPanel();
+    panel('Distribuição por grupo no trimestre','Percentis e medidas de desigualdade do período selecionado.','<div id="inequality-table"></div>')+incertezaDesigualdadePanel()+theilDecompositionPanel();
   makeTable('inequality-table',available,[
     {key:'grupo',label:labels[S.inequalityDimension]},
     {key:'P10',label:'P10',format:money},{key:'P50',label:'P50 · mediana',format:money},{key:'P90',label:'P90',format:money},
@@ -1085,6 +1223,7 @@ function renderInequality() {
   $('#inequality-dimension').onchange=()=>{S.inequalityDimension=$('#inequality-dimension').value;S.inequalityGroup='';save();renderInequality();};
   $('#inequality-group').onchange=rerender;
   $('#inequality-metric').onchange=e=>{S.inequalityMetric=e.target.value;save();renderInequality();};
+  wireIncertezaDesigualdade();
   wireTheilDecomposition();
 }
 function quantileCoefficientChart(rows,level) {
@@ -1312,40 +1451,91 @@ function wireMultiplicidadeM5() {
   ],provenance);
 }
 
+const employmentMetrics = {
+  participacao:{label:'Participação',value:'taxa_participacao_pct',prefix:'participacao',unit:'%'},
+  ocupacao:{label:'Ocupação',value:'taxa_ocupacao_pct',prefix:'ocupacao',unit:'%'},
+  desocupacao:{label:'Desocupação',value:'taxa_desocupacao_pct',prefix:'desocupacao',unit:'%'},
+  informalidade:{label:'Informalidade · critério do projeto',value:'informalidade_estimativa',prefix:'informalidade',unit:'%'},
+  conta_propria:{label:'Trabalho por conta própria',value:'conta_propria_estimativa',prefix:'conta_propria',unit:'%'},
+  empregados_formais:{label:'Empregados formais',value:'empregados_formais_estimativa',prefix:'empregados_formais',unit:'%'},
+  setor_publico:{label:'Participação no setor público',value:'setor_publico_estimativa',prefix:'setor_publico',unit:'%'},
+  jornada:{label:'Jornada habitual · todos os trabalhos',value:'jornada_estimativa',prefix:'jornada',unit:'h/semana'},
+  rendimento_mensal:{label:'Rendimento mensal real · trabalho principal',value:'rendimento_mensal_estimativa',prefix:'rendimento_mensal',unit:'R$/mês'}
+};
+const employmentFormat = (v,m) => v==null?'—':m.unit==='R$/mês'?money(v):fmt(v,2)+' '+m.unit;
+const employmentCI = (r,m,bound) => r?.[m.prefix+'_ic_'+bound+(m.value.startsWith('taxa_')?'_pct':'')];
 function mercadoTrabalhoPanel() {
   const d=mercadoTrabalhoData;
-  if(d?.status!=='ok')return panel('Mercado de trabalho · 25 a 65 anos','Taxas trimestrais ponderadas',empty('Taxas indisponíveis',d?.message||'Selecione a série histórica ponderada.'));
+  if(d?.status!=='ok')return panel('Mercado de trabalho · 25 a 65 anos','Indicadores trimestrais ponderados',empty('Indicadores indisponíveis',d?.message||'Selecione a série histórica ponderada.'));
   const labels={geral:'Brasil',regiao:'Macroregião',sexo:'Sexo',cor:'Cor/raça'};
-  const metricas={participacao:'Participação',ocupacao:'Ocupação',desocupacao:'Desocupação'};
   if(!labels[S.mercadoDimension])S.mercadoDimension='geral';
-  if(!metricas[S.mercadoMetric])S.mercadoMetric='participacao';
+  if(!employmentMetrics[S.mercadoMetric])S.mercadoMetric='participacao';
   const rows=d.rows.filter(r=>r.dimensao===S.mercadoDimension);
   const groups=rows.map(r=>r.grupo);
   if(!groups.includes(S.mercadoGroup))S.mercadoGroup=groups[0]||'Brasil';
-  const selected=rows.find(r=>r.grupo===S.mercadoGroup);
-  const cards=selected?`<div class="mini-metrics">${Object.entries(metricas).map(([key,label])=>`<div><strong>${(selected['taxa_'+key+'_pct']==null?'—':pct(selected['taxa_'+key+'_pct']/100))}</strong><span>${label} · IC95% ${fmt(selected[key+'_ic_inferior_pct'],1)}% a ${fmt(selected[key+'_ic_superior_pct'],1)}%</span></div>`).join('')}</div>`:'';
-  const trend=d.all_rows.filter(r=>r.dimensao===S.mercadoDimension&&r.grupo===S.mercadoGroup).map(r=>({...r,periodo:r.trimestre}));
+  const selected=rows.find(r=>r.grupo===S.mercadoGroup),m=employmentMetrics[S.mercadoMetric];
+  const cardMetric=['participacao','ocupacao','desocupacao'].includes(S.mercadoMetric)?employmentMetrics.informalidade:m;
+  const cards=selected?`<div class="mini-metrics employment-summary">${['participacao','ocupacao','desocupacao'].map(key=>{const item=employmentMetrics[key];return `<div><strong>${employmentFormat(selected[item.value],item)}</strong><span>${item.label} · IC95% ${fmt(employmentCI(selected,item,'inferior'),1)}% a ${fmt(employmentCI(selected,item,'superior'),1)}%</span></div>`;}).join('')}<div><strong>${employmentFormat(selected[cardMetric.value],cardMetric)}</strong><span>${esc(cardMetric.label)} · IC95% ${employmentFormat(employmentCI(selected,cardMetric,'inferior'),cardMetric)} a ${employmentFormat(employmentCI(selected,cardMetric,'superior'),cardMetric)}</span></div></div>`:'';
+  const trend=d.all_rows.filter(r=>r.dimensao===S.mercadoDimension&&r.grupo===S.mercadoGroup).map(r=>({...r,estimativa:r[m.value],ic_inferior:employmentCI(r,m,'inferior'),ic_superior:employmentCI(r,m,'superior')}));
+  const denom={participacao:'População de 25 a 65 anos com condição de atividade válida.',ocupacao:'População de 25 a 65 anos com condição de atividade válida.',desocupacao:'Pessoas na força de trabalho.',informalidade:'Ocupados com formalidade classificada; exclui empregadores e conta própria sem contribuição informada.',conta_propria:'Ocupados com categoria de emprego válida.',empregados_formais:'Ocupados com categoria de emprego válida. Numerador: empregados com carteira, militares e estatutários.',setor_publico:'Ocupados com categoria de emprego válida.',jornada:'Ocupados com horas habituais semanais positivas e válidas em todos os trabalhos, independentemente da renda.',rendimento_mensal:'Ocupados com rendimento habitual mensal positivo e válido, independentemente das horas.'}[S.mercadoMetric];
   return `<section class="panel" id="mercado-trabalho-panel"><div class="panel-heading"><div><h2>Mercado de trabalho · 25 a 65 anos</h2><p>${esc(d.periodo_selecionado)} · V1028 · IC95% por UPA e estrato</p></div><button class="button secondary" id="export-mercado-trabalho" type="button">↓ CSV · série completa</button></div>
-    <div class="inline-options"><label>Agrupar taxas por<select id="mercado-dimension">${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${key===S.mercadoDimension?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo das taxas<select id="mercado-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.mercadoGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label>Taxa no gráfico<select id="mercado-metric">${Object.entries(metricas).map(([key,label])=>`<option value="${key}" ${key===S.mercadoMetric?'selected':''}>${label}</option>`).join('')}</select></label></div>
-    <div aria-live="polite">${cards}${indicatorTrendChart(trend,'taxa_'+S.mercadoMetric+'_pct',metricas[S.mercadoMetric]+' (%)',1)}</div><div id="mercado-trabalho-table"></div>
-    ${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</section>`;
+    <div class="inline-options"><label>Agrupar indicadores por<select id="mercado-dimension">${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${key===S.mercadoDimension?'selected':''}>${label}</option>`).join('')}</select></label><label>Grupo dos indicadores<select id="mercado-group">${groups.map(g=>`<option value="${esc(g)}" ${g===S.mercadoGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label>Indicador no gráfico<select id="mercado-metric">${Object.entries(employmentMetrics).map(([key,item])=>`<option value="${key}" ${key===S.mercadoMetric?'selected':''}>${esc(item.label)} (${item.unit})</option>`).join('')}</select></label></div>
+    <div aria-live="polite">${cards}<p class="note"><strong>Denominador:</strong> ${esc(denom)} Valores monetários a preços de janeiro/2026.</p>${confidenceTrendChart(trend,m.label,v=>employmentFormat(v,m),m.unit)}</div><div id="mercado-trabalho-table"></div>
+    <div class="panel-heading employment-sector-heading"><div><h3>Composição setorial do emprego</h3><p>${esc(S.mercadoGroup)} · ${esc(d.periodo_selecionado)} · participação no total de ocupados</p></div><button class="button secondary" id="export-employment-sectors" type="button">↓ CSV · composição completa</button></div><div id="employment-sector-chart"></div><div id="employment-sector-table"></div>
+    <p class="note">${esc(d.summary.criterio_informalidade||'')}</p><details class="prediction-diagnostic-method"><summary>Domínios, definições e limites dos indicadores</summary>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</details></section>`;
 }
-
 function wireMercadoTrabalho() {
   const d=mercadoTrabalhoData;
   if(d?.status!=='ok')return;
-  const rows=d.rows.filter(r=>r.dimensao===S.mercadoDimension);
+  const rows=d.rows.filter(r=>r.dimensao===S.mercadoDimension),m=employmentMetrics[S.mercadoMetric];
+  const denomN={participacao:'n_populacao',ocupacao:'n_populacao',desocupacao:'n_forca_trabalho'}[S.mercadoMetric]||m.prefix+'_n_denominador';
   makeTable('mercado-trabalho-table',rows,[
-    {key:'grupo',label:'Grupo'},
-    ...['participacao','ocupacao','desocupacao'].map(key=>({key:'taxa_'+key+'_pct',label:{participacao:'Participação (%)',ocupacao:'Ocupação (%)',desocupacao:'Desocupação (%)'}[key],format:v=>fmt(v,2),sub:r=>`IC95% ${fmt(r[key+'_ic_inferior_pct'],2)}% a ${fmt(r[key+'_ic_superior_pct'],2)}%`})),
-    {key:'n_populacao',label:'Registros · população',format:v=>fmt(v,0)},
-    {key:'n_forca_trabalho',label:'Registros · força de trabalho',format:v=>fmt(v,0)},
+    {key:'grupo',label:'Grupo'},{key:m.value,label:m.label+' ('+m.unit+')',format:v=>employmentFormat(v,m)},
+    {key:'inferior',label:'IC95% inferior',value:r=>employmentCI(r,m,'inferior'),format:v=>employmentFormat(v,m)},
+    {key:'superior',label:'IC95% superior',value:r=>employmentCI(r,m,'superior'),format:v=>employmentFormat(v,m)},
+    {key:denomN,label:'Registros no denominador',format:v=>fmt(v,0)},
+    {key:'n_sem_classificacao_formalidade',label:'Ocupados sem classificação de formalidade',format:v=>fmt(v,0)}
   ],d.provenance);
-  const update=()=>{save();$('#mercado-trabalho-panel').outerHTML=mercadoTrabalhoPanel();wireMercadoTrabalho();};
+  const sectors=(d.sector_rows||[]).filter(r=>r.dimensao===S.mercadoDimension&&r.grupo===S.mercadoGroup);
+  $('#employment-sector-chart').innerHTML=sectors.length?`<div class="employment-sectors" role="img" aria-label="Participações por atividade. Valores completos na tabela seguinte.">${sectors.map(r=>`<div><span>${esc(r.atividade)}</span><div><i style="width:${Math.max(0,Math.min(100,r.estimativa||0))}%"></i></div><strong>${fmt(r.estimativa,1)}%</strong></div>`).join('')}</div>`:empty('Composição indisponível','Reprocesse os indicadores de mercado de trabalho.');
+  makeTable('employment-sector-table',sectors,[{key:'atividade',label:'Atividade'},
+    {key:'estimativa',label:'Participação (%)',format:v=>fmt(v,2)},
+    {key:'ic_inferior',label:'IC95% inferior (%)',format:v=>fmt(v,2)},
+    {key:'ic_superior',label:'IC95% superior (%)',format:v=>fmt(v,2)},
+    {key:'n_ocupados_atividade',label:'Registros na atividade',format:v=>fmt(v,0)},
+    {key:'n_denominador',label:'Registros · total de ocupados',format:v=>fmt(v,0)},
+    {key:'populacao_denominador',label:'Total ponderado · ocupados',format:v=>fmt(v,0)}],d.provenance);
+  const update=()=>{const focus=document.activeElement?.id;save();$('#mercado-trabalho-panel').outerHTML=mercadoTrabalhoPanel();wireMercadoTrabalho();if(focus)document.getElementById(focus)?.focus();};
   $('#mercado-dimension').onchange=e=>{S.mercadoDimension=e.target.value;S.mercadoGroup='';update();};
   $('#mercado-group').onchange=e=>{S.mercadoGroup=e.target.value;update();};
   $('#mercado-metric').onchange=e=>{S.mercadoMetric=e.target.value;update();};
   $('#export-mercado-trabalho').onclick=()=>csv('pnad_mercado_trabalho',d.all_rows,d.provenance);
+  $('#export-employment-sectors').onclick=()=>csv('pnad_composicao_setorial',d.all_sector_rows||[],d.provenance);
+}
+
+function annualRegionalPanel() {
+  const d=annualRegionalData;
+  if(d?.status!=='ok')return panel('Evolução por região e ano','Mediana salarial real',empty('Comparação anual indisponível',d?.message||'Selecione a série histórica ponderada.'));
+  const growth=S.annualMetric==='crescimento_mediana_pct';
+  const years=[...new Set(d.rows.map(r=>r.ano))].sort((a,b)=>a-b);
+  const groups=['Norte','Nordeste','Sudeste','Sul','Centro-Oeste'];
+  const vals=d.rows.filter(r=>groups.includes(r.grupo)).map(r=>r[S.annualMetric]).filter(Number.isFinite);
+  const min=vals.length?Math.min(...vals):0,max=vals.length?Math.max(...vals):0,extent=Math.max(Math.abs(min),Math.abs(max),.01);
+  const color=v=>{if(v==null)return '#e7ebf0';const pos=growth?(v+extent)/(2*extent):(v-min)/(max-min||1);return (growth?['#b76516','#edc597','#f3f5f8','#9bbcff','#2f6df6']:['#edf3ff','#c9dcff','#9bbcff','#6794ed','#2f6df6'])[Math.min(4,Math.max(0,Math.floor(pos*5)))];};
+  const value=v=>v==null?'—':growth?fmt(v,1)+'%':money(v);
+  const cells=groups.map(g=>`<tr><th scope="row">${g}</th>${years.map(y=>{const r=d.rows.find(r=>r.grupo===g&&r.ano===y),v=r?.[S.annualMetric],bg=color(v);return `<td style="background:${bg};color:${['#b76516','#2f6df6'].includes(bg)?'#fff':'#172b4d'}" title="${esc(g+' · '+y+' · '+value(v)+' · '+fmt(r?.n_salarios,0)+' salários pessoa-trimestre')}">${value(v)}</td>`;}).join('')}</tr>`).join('');
+  return `<section class="panel" id="annual-regional-panel"><div class="panel-heading"><div><h2>Evolução por região e ano</h2><p>${esc(d.periodo)} · distribuição dos quatro trimestres · V1028</p></div><button class="button secondary" id="export-annual-regional" type="button">↓ CSV · dados anuais</button></div><div class="inline-options"><label>Indicador da comparação anual<select id="annual-regional-metric"><option value="mediana" ${growth?'':'selected'}>Mediana real do salário-hora (R$/h)</option><option value="crescimento_mediana_pct" ${growth?'selected':''}>Crescimento da mediana desde 2013 (%)</option></select></label></div><div aria-live="polite"><p class="note">${growth?'Variação contra a mediana anual de 2013 da mesma região. Laranja: perda; azul: ganho; centro em zero.':'Quanto mais escuro o azul, maior a mediana. Valores em reais de janeiro/2026 por hora.'} Cinza: sem estimativa.</p><div class="regional-heatmap" role="region" aria-label="Tabela anual por macroregião" tabindex="0"><table><caption>${growth?'Crescimento da mediana salarial desde 2013 (%)':'Mediana anual do salário-hora real (R$/h)'}</caption><thead><tr><th scope="col">Macroregião</th>${years.map(y=>`<th scope="col">${y}</th>`).join('')}</tr></thead><tbody>${cells}</tbody></table></div><p class="note">Escala: ${value(growth?-extent:min)} a ${value(growth?extent:max)}${growth?' · zero é a referência':''}. A mediana anual usa todos os registros ponderados dos quatro trimestres. Não é média das medianas trimestrais. Estes valores não recebem IC. O trimestre e os filtros globais não alteram este painel.</p></div><details class="prediction-diagnostic-method"><summary>Ver contagens, referência nacional e método</summary><div id="annual-regional-table"></div>${d.notes.map(n=>`<p class="note">${esc(n)}</p>`).join('')}</details></section>`;
+}
+function wireAnnualRegional() {
+  const d=annualRegionalData;
+  if(d?.status!=='ok')return;
+  makeTable('annual-regional-table',d.rows,[{key:'ano',label:'Ano'},{key:'grupo',label:'Grupo'},
+    {key:'mediana',label:'Mediana R$/h',format:money},{key:'crescimento_mediana_pct',label:'Crescimento da mediana (%) · base anual 2013',format:v=>fmt(v,2)},
+    {key:'mediana_base',label:'Mediana de 2013 R$/h',format:money},{key:'n_salarios',label:'Salários pessoa-trimestre',format:v=>fmt(v,0)},
+    {key:'populacao_media_salarios',label:'População média · salários válidos',format:v=>fmt(v,0)},
+    {key:'n_trimestres',label:'Trimestres válidos'}],d.provenance);
+  $('#annual-regional-metric').onchange=e=>{S.annualMetric=e.target.value;save();$('#annual-regional-panel').outerHTML=annualRegionalPanel();wireAnnualRegional();$('#annual-regional-metric').focus();};
+  $('#export-annual-regional').onclick=()=>csv('pnad_evolucao_regional_anual',d.rows,d.provenance);
 }
 
 function multicolinearidadeM5Panel() {
@@ -1584,10 +1774,10 @@ function wireEstabilidadeM5() {
 }
 
 function renderInference() {
-  if(inferData.status!=='ok'){$('#content').innerHTML=panel('M5 ponderado · associação e inferência','Resultados fixos da execução oficial 2025T4 ou da série histórica',empty('Recorte inferencial indisponível',inferData.message)+`<p class="note" style="margin-top:18px">A estatística descritiva continua disponível. O M5 publicado aceita apenas recortes por macroregião.</p>`)+multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+quantileRegressionPanel()+educationPanel()+regionalPanel()+pseudoPanel()+sensibilidadeCoortesPanel()+selectionPanel();wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();return;}
+  if(inferData.status!=='ok'){$('#content').innerHTML=panel('M5 ponderado · associação e inferência','Resultados fixos da execução oficial 2025T4 ou da série histórica',empty('Recorte inferencial indisponível',inferData.message)+`<p class="note" style="margin-top:18px">A estatística descritiva continua disponível. O M5 publicado aceita apenas recortes por macroregião.</p>`)+multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+rifDesigualdadePanel()+quantileRegressionPanel()+educationPanel()+regionalPanel()+pseudoPanel()+sensibilidadeCoortesPanel()+selectionPanel();wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();wireRifDesigualdade();organizeInference();return;}
   const m=inferData.model;
   $('#content').innerHTML=`<div class="notice">${esc(inferData.selection)} Os coeficientes descrevem associações condicionais; não são efeitos causais.</div><div class="mini-metrics"><div><strong>${fmt(m.n_observacoes_elegiveis,0)}</strong><span>Observações elegíveis</span></div><div><strong>${fmt(m.r2,3)}</strong><span>R² ponderado · ajuste em log, dentro da amostra</span></div><div><strong>${fmt(m.graus_liberdade_desenho,0)}</strong><span>Graus de liberdade · UPAs − estratos</span></div></div>`+
-    multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+
+    multiplicidadeM5Panel()+robustezM5Panel()+estabilidadeM5Panel()+sensibilidadeUfM5Panel()+sensibilidadeEmpregoM5Panel()+nominalRealM5Panel()+multicolinearidadeM5Panel()+residuosM5Panel()+dispersaoM5Panel()+influenciaM5Panel()+groupGapPanel()+oaxacaPanel()+rifDesigualdadePanel()+
     panel('Perfil de idade',`Salário-hora previsto · ${esc(S.filters.regiao || 'Brasil')} · perfil médio ponderado`,`<div id="age-profile-chart">${ageProfileChart(inferData.perfil_idade)}</div><p class="note">As demais características ficam fixas na média ponderada da amostra. O valor exibido é exp(log salário-hora), uma média geométrica condicional sem correção de retransformação. A faixa mostra IC95% pontual pela linearização por UPA e estrato; a escala vertical acompanha os valores exibidos. Associação, não efeito causal.</p>`,'<button class="button secondary" id="export-age-profile" type="button">↓ CSV</button>')+
     panel('Coeficientes e incerteza','Intervalos de confiança de 95% · linearização por UPA dentro de estrato',`<div class="inline-options"><label>Buscar variável<input id="coef-search" type="search" placeholder="Sexo, escolaridade, UF…"></label><label>Família de termos<select id="coef-family"><option value="all">Todos os termos</option><option value="main">Formalidade, sexo, idade e cor</option><option value="education">Escolaridade e interações</option><option value="uf">UF</option><option value="other">Setor e ocupação</option></select></label><label>Significância<select id="coef-significance"><option value="all">Todos os resultados</option><option value="raw">p &lt; 0,05</option><option value="bh">p ajustado BH &lt; 0,05</option><option value="holm">p ajustado Holm &lt; 0,05</option></select></label></div><div id="forest-chart"></div>`)+
     quantileRegressionPanel()+
@@ -1604,7 +1794,7 @@ function renderInference() {
   };
   $('#coef-search').oninput=update;$('#coef-family').onchange=update;$('#coef-significance').onchange=update;update();
   $('#export-age-profile').onclick=()=>{if(inferData.perfil_idade?.length)csv('pnad_perfil_idade',inferData.perfil_idade,inferData.provenance);};
-  wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();
+  wireMultiplicidadeM5();wireRobustezM5();wireEstabilidadeM5();wireSensibilidadeUfM5();wireSensibilidadeEmpregoM5();wireNominalRealM5();wireMulticolinearidadeM5();wireResiduosM5();wireDispersaoM5();wireInfluenciaM5();wireGroupGapPanel();wireOaxaca();wireQuantilePanel();wireEducation();wireRegional();wirePseudo();wireSensibilidadeCoortes();wireSelection();wireRifDesigualdade();organizeInference();
 }
 
 function renderMethodology() {
@@ -1655,7 +1845,11 @@ async function refresh() {
       S.view==='visao'?api('/api/mercado-trabalho?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
       S.view==='visao'?api('/api/incerteza-descritiva?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
       S.view==='associacao'?api('/api/sensibilidade-coortes?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
-      S.view==='desigualdade'?api('/api/decomposicao-theil?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
+      S.view==='desigualdade'?api('/api/decomposicao-theil?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='desigualdade'?api('/api/incerteza-desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='visao'?api('/api/crescimento-salarial?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='associacao'?api('/api/rif-desigualdade?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined),
+      S.view==='visao'?api('/api/evolucao-regional-anual?'+q,{signal:controller.signal}).catch(e=>({status:'unavailable',message:e.message})):Promise.resolve(undefined)]);
     if(token!==revision)return;
     [current,modelData,inferData]=results;
     if(educationToken===educationRevision)educationData=results[3];
@@ -1685,6 +1879,10 @@ async function refresh() {
     incertezaDescritivaData=results[27];
     sensibilidadeCoortesData=results[28];
     theilDecompositionData=results[29];
+    incertezaDesigualdadeData=results[30];
+    crescimentoSalarialData=results[31];
+    rifDesigualdadeData=results[32];
+    annualRegionalData=results[33];
     provenance(current.provenance);
     if(current.status==='empty'||current.status==='insufficient'){$('#notice').hidden=false;$('#notice').textContent=current.status==='empty'?'Nenhuma observação para este recorte. Altere os filtros ou limpe a seleção.':'Amostra insuficiente: menos de 30 salários-hora válidos. Estatísticas são exploratórias; o comparador não apresentará diferenças.';}
     ({visao:renderOverview,descritiva:renderDescriptive,desigualdade:renderInequality,previsao:renderPrediction,associacao:renderInference,metodologia:renderMethodology})[S.view]();

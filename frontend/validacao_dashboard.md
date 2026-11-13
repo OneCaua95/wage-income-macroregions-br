@@ -1,3 +1,27 @@
+# Validação da entrega · 13/11/2026
+
+- Suite completa: **136 testes passaram**, incluindo pesos desiguais, domínios
+  independentes, variância manual por UPA com UPAs fora do domínio, tipos nullable,
+  medianas anuais empilhadas e filtros pareados da comparação temporal no mapa.
+- Dados reais: 676 linhas de mercado, 8.788 parcelas setoriais e 78 células anuais.
+  As treze participações de cada grupo e trimestre somam 100% (tolerância 1e-10).
+- Todos os novos ICs disponíveis contêm suas estimativas. O mapa nacional
+  reproduz o crescimento da média do script 42 e a informalidade do script 37
+  com tolerância 1e-10; há 27 linhas estaduais, inclusive sem estimativa.
+- Navegador: seletores de indicador, região e mediana/crescimento anual,
+  persistência durante recarregamento, tabelas e exportações CSV.
+- A informalidade é identificada como critério do projeto, com contribuição
+  previdenciária, e não como a taxa oficial baseada em CNPJ. Jornada e renda
+  mensal têm denominadores independentes e valores a preços de janeiro/2026.
+- A mediana anual reúne os quatro trimestres. Crescimento anual da mediana
+  tem referência em 2013; crescimento da média no mapa tem referência em 2013T1.
+- Conferência do dicionário local: VD4010 8–12 tem categorias separadas, e
+  VD4031 mede jornada em todos os trabalhos. Os rótulos e o método foram
+  ajustados sem alterar a proxy salarial histórica e seus modelos.
+- Em 390 × 844, largura do documento = largura disponível (375 px); a matriz
+  anual e tabelas mantêm rolagem local. O mapa conserva 27 UFs após selecionar
+  SP e a seleção pode ser limpa sem perder a métrica local.
+
 # Validação da aplicação · 16/10/2026
 
 ## Correção de inicialização

@@ -52,9 +52,11 @@ ATIVIDADES_MAP: Final[dict[int, str]] = {
     5: "Transporte e Armazenagem",
     6: "Alojamento e Alimentação",
     7: "Informação, Comunicação e Finanças",
-    8: "Adm Pública, Educação e Saúde",
-    9: "Outros Serviços",
-    10: "Serviços Domésticos",
+    8: "Administração Pública, Defesa e Seguridade Social",
+    9: "Educação, Saúde e Serviços Sociais",
+    10: "Outros Serviços",
+    11: "Serviços Domésticos",
+    12: "Atividades Mal Definidas",
 }
 
 

@@ -357,6 +357,106 @@ não negativa. Os totais são conferidos pela identidade aditiva. A API
 para a aba Desigualdade salarial. Esta decomposição é descritiva e os
 componentes não recebem intervalos de confiança.
 
+### Emprego ampliado e evolução anual por região
+
+**Conferência do dicionário:** VD4031 mede horas habituais semanais em todos os
+trabalhos; VD4016 mede renda habitual do trabalho principal. A proxy salarial
+histórica é VD4016 / (VD4031 × 4,33), o que limita a interpretação para pessoas
+com múltiplos vínculos. Esta entrega preserva a série e os modelos anteriores.
+A jornada nova usa o nome correto de todos os trabalhos. A composição setorial
+usa os códigos VD4010 diretamente, com 8 = administração pública, 9 = educação/
+saúde, 10 = outros serviços, 11 = domésticos e 12 = atividades mal definidas.
+Não reutiliza os rótulos antigos arquivados na base analítica. O mapeamento para
+novas preparações também foi corrigido conforme o dicionário local do IBGE.
+
+Execute a partir da raiz do repositório:
+
+```powershell
+python pnad_pipeline/scripts/37_mercado_trabalho.py
+python pnad_pipeline/scripts/44_evolucao_regional_anual.py
+```
+
+O script 37 mantém as três taxas anteriores e acrescenta seis indicadores com
+IC95% por linearização de razões, cadastro completo de UPAs, V1028 e distribuição
+t trimestral. Conta própria (VD4009=9), empregados formais (1,3,5,7) e setor público
+(5,6,7) usam ocupados com categoria válida. Informalidade é o complemento da
+classificação de formalidade do projeto: carteira/categoria e contribuição
+previdenciária para empregadores e conta própria, excluindo contribuição ausente.
+Não é a [proxy oficial do IBGE baseada em CNPJ](https://agenciadenoticias.ibge.gov.br/agencia-sala-de-imprensa/2013-agencia-de-noticias/releases/45908-pnad-continua-trimestral-desocupacao-recua-em-seis-das-27-ufs-no-4-trimestre-de-2025).
+
+Jornada usa horas habituais positivas em todos os trabalhos (VD4031), sem exigir
+renda positiva. Rendimento usa renda habitual mensal positiva do trabalho principal
+(VD4016), sem exigir horas positivas, em reais de janeiro/2026. Cada indicador
+publica n e soma dos pesos do denominador, estimativa, IC e status. O mínimo é de
+30 registros no denominador. Os seis indicadores não formam uma partição.
+
+A composição setorial usa VD4010 e o total de ocupados como denominador, incluindo
+Sem informação para códigos ausentes/não reconhecidos. As treze participações somam
+100%, com intervalos pontuais. O JSON do script 37 inclui `composicao_setorial`;
+a API `/api/mercado-trabalho` expõe `sector_rows` no trimestre e `all_sector_rows`
+na série completa. A execução gerou 676 linhas de indicadores e 8.788 setoriais.
+
+O script 44 usa a base descritiva, não a elegibilidade adicional do M5. Calcula
+medianas empíricas ponderadas sobre os quatro trimestres de cada ano e crescimento
+da mediana contra 2013 na mesma região. Não calcula média de medianas. Mantém
+empates, exige quatro trimestres e 30 salários válidos por célula, e publica
+contagens pessoa-trimestre e população salarial média (soma V1028 / 4). A série
+tem 78 linhas: 13 anos × Brasil e cinco regiões. É descritiva, sem IC. A API
+`/api/evolucao-regional-anual` ignora explicitamente período e filtros globais.
+
+O mapa `/api/mapa-uf` acrescenta `informalidade_pct` com domínio independente do
+salário, e `crescimento_media_pct`, média real contra 2013T1, com os mesmos filtros
+nas duas amostras e mínimo de 30 salários em ambas. O filtro UF não limita o mapa.
+A fonte real não recebe crescimento sem referência histórica. Há contagens dos
+dois períodos, referência e critério de informalidade na proveniência/CSV. São
+comparações descritivas sem IC; mudanças de composição e sazonalidade permanecem.
+
+### Incerteza da desigualdade, crescimento e regressões RIF (scripts 41–43)
+
+```powershell
+python scripts/41_incerteza_desigualdade.py
+python scripts/42_crescimento_salarial.py
+python scripts/43_rif_desigualdade.py
+```
+
+O script 41 estima IC95% por trimestre para Brasil e macroregiões usando
+a mesma amostra do M5 e da distribuição salarial histórica. Gini, Theil T
+e participação dos 10% maiores salários usam funções de influência com
+linearização por UPA/estrato. O topo preserva exatamente 10% da massa
+ponderada, inclusive o fracionamento na fronteira. O intervalo de P90/P10
+combina limites de Woodruff a 97,5% dos dois quantis por Bonferroni, formando
+um intervalo conservador de 95%. Os intervalos são pontuais e respeitam o
+suporte dos indicadores. As saídas ficam em `inferencia_amostral/incerteza_desigualdade/`.
+
+O script 42 usa a amostra descritiva e compara médias aritméticas reais
+por Brasil e macroregião. A série acumulada fixa a referência em 2013T1.
+A série interanual compara o mesmo trimestre do ano anterior. Os scores
+das médias são agregados nas UPAs comuns, e a variância conjunta usa o
+cadastro completo da união dos dois períodos. O intervalo aplica o método
+delta ao log da razão. A aproximação com reposição, a rotação e as UPAs
+reclassificadas limitam a variância temporal estimável. As saídas ficam em
+`inferencia_amostral/crescimento_salarial/`.
+[Referência de contrastes](https://r-survey.r-forge.r-project.org/pkgdown/docs/reference/svycontrast.html).
+
+O script 43 estima regressões RIF para Gini e Theil na distribuição nacional
+ponderada da série histórica empilhada. Usa os mesmos registros e controles
+do M5 e publica os contrastes de 12 versus 8 anos de estudo, formalidade
+e sexo. Gini é expresso em pontos da escala 0–100 e Theil em unidades
+originais. A covariância inclui a resposta RIF gerada, com derivadas da
+distribuição empírica, da média e dos índices, além dos scores da regressão.
+As derivadas são verificadas por perturbações independentes dos pesos.
+Os perfis de referência são tratados como fixos e Holm é aplicado aos seis
+contrastes. A interpretação é associativa e depende da projeção linear.
+As saídas ficam em `inferencia_amostral/rif_desigualdade/`.
+[Firpo, Fortin e Lemieux (2018)](https://www.mdpi.com/2225-1146/6/2/28).
+
+As APIs `/api/incerteza-desigualdade`, `/api/crescimento-salarial` e
+`/api/rif-desigualdade` entregam os agregados e a proveniência. Os painéis
+usam seletores locais, tabelas e CSV. A aba Associação e inferência organiza
+as análises em resultados principais, diagnósticos, desigualdade e
+decomposições, e pseudo-painel. A navegação aceita setas, Home e End e
+mantém o grupo selecionado durante a sessão.
+
 ### Multicolinearidade do M5
 
 ```powershell

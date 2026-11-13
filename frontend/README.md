@@ -64,6 +64,14 @@ permitem tentar novamente.
   nascimento, três limiares de tamanho e três especificações na aba Associação.
 - Decomposição do Theil em parcelas dentro e entre macroregiões, com série
   trimestral, contribuições regionais e CSV na aba Desigualdade salarial.
+- IC95% de Gini, Theil, participação do topo e intervalo conservador de
+  P90/P10 para Brasil e macroregiões na aba Desigualdade salarial.
+- Crescimento da média salarial desde 2013T1 e variação interanual na Visão
+  geral, com IC95% que incorpora a covariância das médias entre períodos.
+- Contrastes RIF para Gini e Theil com controles do M5, incerteza da
+  distribuição estimada e correção de Holm na família de seis contrastes.
+- Navegação interna da aba Associação e inferência em quatro grupos, com
+  seleção persistente, controles acessíveis e navegação por teclado.
 - Robustez do M5 nacional ao limitar salários-hora nos percentis ponderados 1
   e 99 da série histórica. A aba Associação e inferência mostra os três
   contrastes, IC95% em cada versão, mudanças pareadas e exportação CSV.
@@ -91,6 +99,46 @@ permitem tentar novamente.
   Gráfico observado/previsto usa médias de faixas quantis e tem tabela equivalente.
 
 ## Fontes e limites operacionais
+
+### Emprego, mapa e comparação anual · 13/11/2026
+
+A jornada coletada (VD4031) soma todos os trabalhos. A série de salário-hora
+preserva a proxy histórica VD4016 / (VD4031 × 4,33): rendimento do trabalho
+principal sobre horas de todos os trabalhos, com limite de interpretação para
+múltiplos vínculos. As estimativas anteriores não foram recalculadas nesta entrega.
+Os novos setores usam os códigos VD4010 conferidos no dicionário do IBGE, sem
+reutilizar os rótulos antigos arquivados na base analítica.
+
+A Visão geral amplia o painel de mercado de trabalho com informalidade pelo
+critério do projeto, conta própria, empregados formais, setor público, jornada
+habitual semanal de todos os trabalhos e rendimento mensal real do trabalho principal. Cada indicador
+tem seu denominador, contagem e IC95% pontual. A composição setorial inclui
+ocupados sem atividade informada e soma 100%; tem gráfico, tabela e CSV próprio.
+Use os seletores locais para Brasil, macroregião, sexo e cor/raça. Os filtros
+globais não reestimam esses agregados históricos.
+
+**Informalidade é uma proxy do projeto:** carteira/categoria do emprego e
+contribuição previdenciária para empregadores e conta própria. As variáveis
+coletadas não permitem reproduzir a taxa oficial baseada em CNPJ. Casos sem
+classificação são excluídos do denominador e contados. CSVs incluem o critério.
+
+O mapa aceita as novas métricas de informalidade e crescimento da média real
+desde 2013T1. A informalidade também inclui ocupados sem salário-hora válido.
+O crescimento exige pelo menos 30 salários em cada período e aplica os mesmos
+filtros nos dois períodos, exceto UF, que apenas destaca o estado. A comparação
+temporal está disponível na fonte histórica. As duas métricas são descritivas,
+sem IC no mapa. Perdas e ganhos têm cores distintas em escala centrada em zero.
+
+O mapa de calor compara as cinco macroregiões nos 13 anos de 2013 a 2025.
+Alterna mediana anual real e crescimento da mediana anual contra 2013. A mediana
+é calculada sobre a distribuição ponderada dos quatro trimestres; não é média
+das medianas trimestrais. A tabela complementar inclui Brasil, contagens e
+população média do domínio salarial. Há rolagem local em telas pequenas e CSV
+das 78 células. Esse painel não aplica os filtros globais e não tem IC.
+
+Reprocessamento: scripts `37_mercado_trabalho.py` e
+`44_evolucao_regional_anual.py` na pasta `pnad_pipeline/scripts`. A API
+`/api/evolucao-regional-anual` entrega a série anual completa com proveniência.
 
 **Série histórica ponderada:** `data/processed/recoleta_ponderada/pnad_analise_25_65.parquet`.
 Contém os 52 trimestres de 2013 a 2025, 14.259.616 registros pessoa-trimestre,
